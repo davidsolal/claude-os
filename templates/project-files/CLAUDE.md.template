@@ -276,7 +276,12 @@ Parameters: kb_name (e.g., "{{PROJECT_NAME}}-project_memories"), query (your sea
    - Actions: start, end, status, pause, resume
    - Example: `/claude-os-session start "User authentication feature"`
 
-6. **`/claude-os-triggers [action]`**
+6. **`/claude-os-lifecycle [action] [optional: KB name]`**
+   - KB health, dedup, consolidate, archive
+   - Actions: health, dedup, consolidate, archive, logs
+   - Example: `/claude-os-lifecycle health {{PROJECT_NAME}}-project_memories`
+
+7. **`/claude-os-triggers [action]`**
    - Manage trigger phrases
    - Example: `/claude-os-triggers list`
 
@@ -293,6 +298,10 @@ Parameters: kb_name (e.g., "{{PROJECT_NAME}}-project_memories"), query (your sea
 - `mcp__code-forge__list_knowledge_bases` - List all KBs
 - `mcp__code-forge__list_documents` - List documents in KB
 - `mcp__code-forge__get_kb_stats` - Get KB statistics
+- `mcp__code-forge__kb_lifecycle_health` - KB health report with recommendations
+- `mcp__code-forge__kb_lifecycle_dedup` - Scan/merge duplicate documents
+- `mcp__code-forge__kb_lifecycle_consolidate` - LLM-powered document merging
+- `mcp__code-forge__kb_lifecycle_archive` - Archive, restore, list, find stale
 
 ## Project-Specific Information
 
