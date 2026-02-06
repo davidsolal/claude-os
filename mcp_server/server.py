@@ -556,6 +556,11 @@ class ChatRequest(BaseModel):
     use_rerank: bool = False
     use_agentic: bool = False
 
+class SearchAllRequest(BaseModel):
+    query: str
+    top_k: int = 10
+    kb_filter: Optional[str] = None
+
 
 # REST API Endpoints for UI
 @app.get("/api/kb")
@@ -576,6 +581,56 @@ async def api_create_knowledge_base(request: CreateKBRequest):
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
+
+
+@app.post("/api/kb/search-all")
+@limiter.limit("10/minute")
+async def api_search_all(request: Request, body: SearchAllRequest):
+    """REST API: Search across multiple knowledge bases."""
+    try:
+        from llama_index.embeddings.ollama import OllamaEmbedding
+        from app.core.config import Config
+
+        db_manager = get_sqlite_manager()
+        all_kbs = db_manager.list_collections()
+        kb_names = [kb["name"] for kb in all_kbs]
+
+        if body.kb_filter:
+            kb_names = [n for n in kb_names if n.startswith(body.kb_filter)]
+
+        if not kb_names:
+            return {"results": [], "kbs_searched": 0, "total_kbs": len(all_kbs)}
+
+        embed_model = OllamaEmbedding(
+            model_name=Config.OLLAMA_EMBED_MODEL,
+            base_url="http://localhost:11434"
+        )
+        query_embedding = embed_model.get_text_embedding(body.query)
+
+        raw = db_manager.query_documents_multi_kb(
+            kb_names=kb_names,
+            query_embedding=query_embedding,
+            n_results=body.top_k
+        )
+
+        results = []
+        for i in range(len(raw["ids"])):
+            results.append({
+                "doc_id": raw["ids"][i],
+                "text": raw["documents"][i],
+                "score": raw["scores"][i],
+                "kb_name": raw["metadatas"][i].get("_source_kb", ""),
+                "metadata": raw["metadatas"][i]
+            })
+
+        return {
+            "results": results,
+            "kbs_searched": len(kb_names),
+            "total_kbs": len(all_kbs)
+        }
+    except Exception as e:
+        logger.error(f"Search-all failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/kb/{kb_name}")

@@ -545,3 +545,149 @@ class TestSQLiteManagerSingleton:
         manager = get_sqlite_manager()
         assert manager is not None
         assert hasattr(manager, 'db_path')
+
+
+@pytest.mark.unit
+class TestQueryDocumentsMultiKB:
+    """Test cross-KB search functionality."""
+
+    def _add_docs(self, db, kb_name, docs):
+        """Helper to add documents with embeddings to a KB."""
+        documents = [d["text"] for d in docs]
+        embeddings = [d["embedding"] for d in docs]
+        metadatas = [d.get("metadata", {}) for d in docs]
+        ids = [d["id"] for d in docs]
+        db.add_documents(kb_name=kb_name, documents=documents,
+                         embeddings=embeddings, metadatas=metadatas, ids=ids)
+
+    def test_multi_kb_basic(self, clean_db):
+        """Test searching across two KBs returns merged results."""
+        clean_db.create_collection("kb_a", KBType.GENERIC)
+        clean_db.create_collection("kb_b", KBType.GENERIC)
+
+        np.random.seed(10)
+        base = np.random.randn(768).astype(np.float32)
+        base = base / np.linalg.norm(base)
+
+        # KB_A: one doc very similar to query
+        perturbed_a = base + np.random.randn(768).astype(np.float32) * 0.01
+        perturbed_a = perturbed_a / np.linalg.norm(perturbed_a)
+        self._add_docs(clean_db, "kb_a", [
+            {"id": "a1", "text": "Document from KB A", "embedding": perturbed_a.tolist(),
+             "metadata": {"filename": "a1.md"}}
+        ])
+
+        # KB_B: one doc less similar
+        perturbed_b = base + np.random.randn(768).astype(np.float32) * 0.05
+        perturbed_b = perturbed_b / np.linalg.norm(perturbed_b)
+        self._add_docs(clean_db, "kb_b", [
+            {"id": "b1", "text": "Document from KB B", "embedding": perturbed_b.tolist(),
+             "metadata": {"filename": "b1.md"}}
+        ])
+
+        result = clean_db.query_documents_multi_kb(
+            kb_names=["kb_a", "kb_b"],
+            query_embedding=base.tolist(),
+            n_results=10
+        )
+
+        assert len(result["ids"]) == 2
+        assert len(result["documents"]) == 2
+        assert len(result["scores"]) == 2
+        # First result should have higher score
+        assert result["scores"][0] >= result["scores"][1]
+        # Each result should have _source_kb
+        kbs_found = {m["_source_kb"] for m in result["metadatas"]}
+        assert "kb_a" in kbs_found
+        assert "kb_b" in kbs_found
+
+    def test_multi_kb_dedup(self, clean_db):
+        """Test that duplicate content across KBs is deduplicated."""
+        clean_db.create_collection("kb_x", KBType.GENERIC)
+        clean_db.create_collection("kb_y", KBType.GENERIC)
+
+        np.random.seed(20)
+        emb = np.random.randn(768).astype(np.float32)
+        emb = emb / np.linalg.norm(emb)
+
+        same_text = "Exact same content in both KBs for dedup testing"
+        self._add_docs(clean_db, "kb_x", [
+            {"id": "x1", "text": same_text, "embedding": emb.tolist(), "metadata": {}}
+        ])
+        self._add_docs(clean_db, "kb_y", [
+            {"id": "y1", "text": same_text, "embedding": emb.tolist(), "metadata": {}}
+        ])
+
+        result = clean_db.query_documents_multi_kb(
+            kb_names=["kb_x", "kb_y"],
+            query_embedding=emb.tolist(),
+            n_results=10
+        )
+
+        # Should only get 1 result after dedup
+        assert len(result["ids"]) == 1
+
+    def test_multi_kb_empty(self, clean_db):
+        """Test searching with no matching KBs returns empty."""
+        result = clean_db.query_documents_multi_kb(
+            kb_names=["nonexistent_kb"],
+            query_embedding=[0.1] * 768,
+            n_results=5
+        )
+        assert result["ids"] == []
+        assert result["documents"] == []
+        assert result["scores"] == []
+
+    def test_multi_kb_respects_n_results(self, clean_db):
+        """Test that n_results limit is respected."""
+        clean_db.create_collection("kb_limit", KBType.GENERIC)
+
+        np.random.seed(30)
+        base = np.random.randn(768).astype(np.float32)
+        base = base / np.linalg.norm(base)
+
+        docs = []
+        for i in range(5):
+            perturbed = base + np.random.randn(768).astype(np.float32) * 0.01
+            perturbed = perturbed / np.linalg.norm(perturbed)
+            docs.append({
+                "id": f"lim{i}", "text": f"Document {i} for limit test",
+                "embedding": perturbed.tolist(), "metadata": {}
+            })
+        self._add_docs(clean_db, "kb_limit", docs)
+
+        result = clean_db.query_documents_multi_kb(
+            kb_names=["kb_limit"],
+            query_embedding=base.tolist(),
+            n_results=2
+        )
+        assert len(result["ids"]) == 2
+
+    def test_multi_kb_score_ordering(self, clean_db):
+        """Test that results are sorted by descending similarity score."""
+        clean_db.create_collection("kb_order", KBType.GENERIC)
+
+        np.random.seed(40)
+        base = np.random.randn(768).astype(np.float32)
+        base = base / np.linalg.norm(base)
+
+        # Add docs with varying similarity
+        docs = []
+        for i, noise in enumerate([0.01, 0.1, 0.5]):
+            perturbed = base + np.random.randn(768).astype(np.float32) * noise
+            perturbed = perturbed / np.linalg.norm(perturbed)
+            docs.append({
+                "id": f"ord{i}", "text": f"Document {i} noise={noise}",
+                "embedding": perturbed.tolist(), "metadata": {}
+            })
+        self._add_docs(clean_db, "kb_order", docs)
+
+        result = clean_db.query_documents_multi_kb(
+            kb_names=["kb_order"],
+            query_embedding=base.tolist(),
+            n_results=10
+        )
+
+        scores = result["scores"]
+        for i in range(len(scores) - 1):
+            assert scores[i] >= scores[i + 1], "Scores should be in descending order"

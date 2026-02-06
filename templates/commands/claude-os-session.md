@@ -1,17 +1,15 @@
 ---
 name: claude-os-session
-description: Intelligent session management with automatic context loading and pattern recognition
+description: Lightweight session management with automatic context loading
 ---
 
 # Claude OS Session Management
 
-Power-user session workflows that make me smarter with every session.
+Simple session tracking that loads context on start and saves learnings on end.
 
 ## Setup
 
 The state file is **project-local**: `{cwd}/claude-os-state.json` (where `{cwd}` is the current working directory).
-
-Each project has its own session state, so you can have different active sessions in different projects.
 
 ## Commands
 
@@ -22,309 +20,111 @@ Each project has its own session state, so you can have different active session
 /claude-os-session save [note]      - Quick save during session
 /claude-os-session blocker [desc]   - Track blocker
 /claude-os-session pattern [desc]   - Document pattern discovered
-/claude-os-session context          - Show loaded context
 ```
 
 ---
 
-## START SESSION - The Smart Way
-
-### What Happens
+## START SESSION
 
 ```
 /claude-os-session start "redesign appointment dashboard"
 ```
 
-**Phase 1: Load State**
-```
-Read: {cwd}/claude-os-state.json
-```
-If the file doesn't exist, create it with the default template (see below).
+**Step 1: Read State**
 
-**Phase 2: Search Recent Memories**
+Read `{cwd}/claude-os-state.json`. If it exists and has content, show:
+
 ```
-[AUTOMATIC MEMORY SEARCH]
+Last time: [one_liner]
+Branch: [last_branch]
+Stopped: [stopped_at]
+```
+
+If the file doesn't exist, that's fine — skip to Step 2.
+
+**Step 2: Search Memories**
+
+```
 mcp__code-forge__search_knowledge_base
-Query: "dashboard redesign security recent work"
-KB: {project}-project_memories
+  kb_name: {project}-project_memories
+  query: "[task] recent"
 ```
 
-**Phase 3: Get Git Context**
+Show the top 3-5 results as key context.
+
+**Step 3: Git Context**
+
 ```bash
 git branch --show-current
 git status --short
-git log -5 --oneline
+git log -3 --oneline
 ```
 
-**Phase 4: Intelligent Context Loading**
+**Step 4: Ready**
 
-Based on task + recent memories + git state, I'll:
-1. Find the 5 most relevant memories
-2. Show you what I remember about this task
-3. Identify patterns we've used before
-4. Check for any blockers from last session
-5. Load coding standards from project profile
-
-**Phase 5: Show Session Start Summary**
+Show a brief summary and start working:
 
 ```
-═══════════════════════════════════════
-🚀 SESSION STARTED
-═══════════════════════════════════════
+Session: [task]
+Branch: [current-branch]
+Context: [N] memories loaded
+[One-line summary of each relevant memory]
 
-Task: Redesign Appointment Dashboard
-Branch: feature/appointment-redesign
-Started: 2025-10-29 10:30 AM
-
-📚 CONTEXT LOADED (5 memories):
-  ✓ Appointment Dashboard Redesign Plan (Oct 28)
-  ✓ Current Dashboard Analysis (Oct 28)
-  ✓ Live Dashboard Analyzed (Oct 28)
-  ✓ Bootstrap to Modern Cards Pattern (Oct 25)
-  ✓ Sidebar Navigation Pattern (Oct 22)
-
-🎯 KEY INSIGHTS:
-  • 67-page implementation plan ready
-  • All 5 tabs documented with screenshots
-  • Zero functionality loss requirement
-  • iOS-style toggles already in use
-  • Tekmetric integration must be preserved
-
-🔄 PATTERNS AVAILABLE:
-  • Sidebar navigation (from user-auth work)
-  • Card-based layouts (from reports redesign)
-  • Modern toggle switches (existing in app)
-
-⚠️  BLOCKERS FROM LAST SESSION:
-  None found ✓
-
-📋 CODING STANDARDS:
-  • Service objects for business logic
-  • Decorator pattern with Draper
-  • Fragment caching with Redis
-  • Bootstrap 3.x styling
-
-Ready to code! I have full context.
-═══════════════════════════════════════
+Ready to go.
 ```
 
-**Phase 6: Update State**
+**Step 5: Update State**
+
+Write to `{cwd}/claude-os-state.json`:
 
 ```json
 {
-  "current_session": {
-    "active": true,
-    "started_at": "2025-10-29T10:30:00Z",
-    "task": "redesign appointment dashboard",
-    "branch": "feature/appointment-redesign",
-    "context": [
-      "appointment_dashboard_redesign.md",
-      "current_dashboard_analysis.md",
-      ...
-    ]
-  }
+  "last_task": "[task]",
+  "last_branch": "[current-branch]",
+  "stopped_at": "[current ISO timestamp]",
+  "one_liner": ""
 }
 ```
 
 ---
 
-## END SESSION - The Smart Way
-
-### What Happens
+## END SESSION
 
 ```
 /claude-os-session end
 ```
 
-**Phase 1: Session Analysis**
+**Step 1: Summarize Work**
 
-I'll analyze what we accomplished:
-- Files changed
-- Commits made
-- Patterns used
-- Problems solved
-- Decisions made
-
-**Phase 2: Smart Save Prompts**
-
-```
-═══════════════════════════════════════
-📊 SESSION SUMMARY
-═══════════════════════════════════════
-
-Duration: 2 hours 15 minutes
-Task: Redesign Appointment Dashboard
-Files Changed: 8 files
-Commits: 3 commits
-
-🎨 WORK COMPLETED:
-  ✓ Created sidebar navigation component
-  ✓ Converted Bootstrap panels to cards
-  ✓ Implemented iOS-style toggles
-  ✓ Added section-specific save buttons
-  ✓ Tested with existing data
-
-💡 PATTERNS DISCOVERED:
-  • Sidebar state persistence with localStorage
-  • Card hover effects for modern feel
-  • Toggle accessibility improvements
-
-🤔 DECISIONS MADE:
-  • Keep horizontal tabs for mobile fallback
-  • Use CSS Grid for sidebar layout
-  • Maintain Bootstrap color scheme
-
-⚠️  BLOCKERS ENCOUNTERED:
-  None
-
-═══════════════════════════════════════
-💾 SMART SAVE RECOMMENDATIONS
-═══════════════════════════════════════
-
-I found 3 things worth saving:
-
-1. 💎 HIGH VALUE - Sidebar Navigation Pattern
-   "Reusable sidebar component with localStorage state persistence
-    and responsive behavior. Can be applied to other admin sections."
-
-   Save this? [y/n]
-
-2. 💎 HIGH VALUE - Card Conversion Pattern
-   "Bootstrap panel → modern card conversion pattern with proper
-    ARIA labels and semantic HTML. Maintains form submission."
-
-   Save this? [y/n]
-
-3. 📊 MEDIUM VALUE - Session Summary
-   "Complete work log for appointment dashboard phase 1"
-
-   Save this? [y/n]
-
-[y] Save all  [n] Save none  [s] Select individually
+```bash
+git diff --stat HEAD~3..HEAD
+git log --oneline -5
 ```
 
-**Phase 2.5: Built-in Session History Extraction (Optional)**
+Show what was accomplished (files changed, commits made).
 
-After smart save prompts, offer to extract insights from the full conversation history:
+**Step 2: Offer to Save**
 
-```
-═══════════════════════════════════════
-📚 EXTRACT FROM SESSION HISTORY?
-═══════════════════════════════════════
+Ask: "Anything worth remembering? I can save decisions, patterns, or blockers."
 
-Claude Code recorded our full conversation in its built-in session file.
-I can analyze it to extract additional insights we might have missed.
+If yes, use `/claude-os-remember` to save each item.
 
-This captures things we discussed but didn't explicitly save:
-  • Decisions made during debugging
-  • Patterns discovered while exploring code
-  • Solutions to errors we encountered
-  • Blockers we hit and resolved
+**Step 3: Write State**
 
-[y] Extract insights  [n] Skip  [v] Preview what I'd extract
-```
-
-**If user selects [y] Extract insights:**
-
-```python
-# Step 1: Find the current session file
-# Sessions are stored at: ~/.claude/projects/{encoded-project-path}/
-# Project path /Users/x/Projects/myapp becomes -Users-x-Projects-myapp
-
-# Step 2: Call the extraction tool
-mcp__code-forge__extract_session_insights
-  session_path: "~/.claude/projects/-Users-iamanmp-Projects-{project}/{session_id}.jsonl"
-  kb_name: "{project}-project_memories"
-  auto_save: false
-```
-
-**Step 3: Show extracted insights for approval:**
-
-```
-═══════════════════════════════════════
-🔍 EXTRACTED INSIGHTS
-═══════════════════════════════════════
-
-Found 4 insights from session history:
-
-1. 💎 HIGH (0.92) - Decision
-   "Hybrid Session Architecture"
-   Decided to combine Claude Code built-in sessions (for replay)
-   with Claude OS knowledge bases (for semantic search).
-   [Save] [Skip]
-
-2. 💎 HIGH (0.88) - Pattern
-   "Session File Structure"
-   Built-in sessions use JSONL format with entry types: user,
-   assistant, file-history-snapshot. UUID parent chain for threading.
-   [Save] [Skip]
-
-3. 📊 MEDIUM (0.75) - Solution
-   "Update Lock Error Resolution"
-   Claude update error "Another process updating" resolved by
-   checking version - was already on latest, no lock file existed.
-   [Save] [Skip]
-
-4. 📊 MEDIUM (0.71) - Decision
-   "User-Controlled Extraction"
-   Session extraction should be opt-in with user approval for
-   each insight to avoid noise and respect privacy.
-   [Save] [Skip]
-
-───────────────────────────────────────
-[a] Save all  [h] Save high confidence only (>0.8)  [s] Skip all
-```
-
-**If user selects [v] Preview:**
-
-Show a dry-run of what would be extracted without saving, then re-prompt.
-
-**If user selects [n] Skip:**
-
-Continue to Phase 3 without extraction.
-
-**Configuration:**
-
-Users can configure extraction behavior in their state file:
+Ask for a one-liner summary (or generate one from the work), then write:
 
 ```json
 {
-  "preferences": {
-    "session_extraction": {
-      "enabled": true,
-      "auto_prompt_on_end": true,
-      "min_confidence_threshold": 0.7,
-      "auto_save_high_confidence": false,
-      "insight_types": ["decisions", "patterns", "solutions", "blockers"]
-    }
-  }
-}
-```
-
-If `auto_prompt_on_end` is false, skip this phase entirely.
-If `auto_save_high_confidence` is true, automatically save insights above threshold.
-
-**Phase 3: Update State & Stats**
-
-```json
-{
-  "last_session": {
-    "ended_at": "2025-10-29T12:45:00Z",
-    "duration_minutes": 135,
-    "work_completed": [...],
-    "memories_saved": 3
-  },
-  "statistics": {
-    "total_sessions": 47,
-    "total_memories_saved": 128,
-    "average_session_duration": 98
-  }
+  "last_task": "[task from start]",
+  "last_branch": "[current-branch]",
+  "stopped_at": "[current ISO timestamp]",
+  "one_liner": "[one-liner summary of where we stopped]"
 }
 ```
 
 ---
 
-## DURING SESSION COMMANDS
+## DURING SESSION
 
 ### Quick Save
 
@@ -332,7 +132,7 @@ If `auto_save_high_confidence` is true, automatically save insights above thresh
 /claude-os-session save "Found fix for N+1 query in appointments"
 ```
 
-→ Immediately saves to memories with session context
+Immediately saves to memories with session context using `/claude-os-remember`.
 
 ### Track Blocker
 
@@ -340,7 +140,13 @@ If `auto_save_high_confidence` is true, automatically save insights above thresh
 /claude-os-session blocker "Tekmetric API returning 500 on appointment sync"
 ```
 
-→ Adds to blockers, I'll proactively search for solutions
+Saves a blocker to memories and searches for related solutions:
+
+```
+mcp__code-forge__search_knowledge_base
+  kb_name: {project}-project_memories
+  query: "[blocker description]"
+```
 
 ### Document Pattern
 
@@ -348,19 +154,7 @@ If `auto_save_high_confidence` is true, automatically save insights above thresh
 /claude-os-session pattern "Service objects return model on success, error string on fail"
 ```
 
-→ Saves pattern with current task context
-
-### Show Context
-
-```
-/claude-os-session context
-```
-
-Shows:
-- Active memories loaded
-- Patterns available
-- Coding standards
-- Current git state
+Saves pattern to memories with current task context.
 
 ---
 
@@ -370,255 +164,61 @@ Shows:
 /claude-os-session status
 ```
 
-**Output:**
+Read `{cwd}/claude-os-state.json` and show:
 
 ```
-═══════════════════════════════════════
-📊 CURRENT SESSION
-═══════════════════════════════════════
-
-Status: ACTIVE ✓
-Task: Redesign Appointment Dashboard
-Duration: 1h 23m
-Branch: feature/appointment-redesign
-
-📚 Context Loaded: 5 memories
-🎯 Patterns Available: 3 patterns
-⚠️  Active Blockers: 0
-💾 Quick Saves: 2
-
-Last Activity: 3 minutes ago
-Next Suggested Action: Continue phase 2 implementation
-
-Type /claude-os-session end when done
-═══════════════════════════════════════
+Task: [last_task]
+Branch: [last_branch]
+Last active: [stopped_at]
+Summary: [one_liner]
 ```
 
 ---
 
-## IMPLEMENTATION DETAILS
+## STATE FILE FORMAT
 
-### State File Location
-```
-{cwd}/claude-os-state.json
-```
-Each project has its own state file in its root directory.
-
-### Default State Template
-
-When starting a session in a project without a state file, create one with this structure:
+`{cwd}/claude-os-state.json` — exactly 4 fields:
 
 ```json
 {
-  "version": "1.1.0",
-  "current_session": {
-    "active": false,
-    "started_at": null,
-    "task": null,
-    "project": null,
-    "branch": null,
-    "context": [],
-    "decisions_made": [],
-    "blockers": [],
-    "patterns_discovered": [],
-    "builtin_session_id": null
-  },
-  "last_session": null,
-  "active_memories": {
-    "loaded_at_start": [],
-    "referenced_during_session": [],
-    "should_review": []
-  },
-  "statistics": {
-    "total_sessions": 0,
-    "total_memories_saved": 0,
-    "total_patterns_discovered": 0,
-    "total_insights_extracted": 0,
-    "most_referenced_memories": [],
-    "average_session_duration": 0
-  },
-  "flags": {
-    "needs_memory_consolidation": false,
-    "has_unresolved_blockers": false,
-    "patterns_ready_to_document": false
-  },
-  "preferences": {
-    "auto_search_on_start": true,
-    "max_memories_to_load": 5,
-    "search_days_back": 14,
-    "include_pattern_search": true,
-    "proactive_suggestions": true,
-    "session_extraction": {
-      "enabled": true,
-      "auto_prompt_on_end": true,
-      "min_confidence_threshold": 0.7,
-      "auto_save_high_confidence": false,
-      "insight_types": ["decisions", "patterns", "solutions", "blockers"]
-    }
-  },
-  "metadata": {
-    "last_updated": null,
-    "claude_os_version": "1.1.0",
-    "project_name": null
-  }
+  "last_task": "Fix appointment email flood",
+  "last_branch": "fix-email-flood",
+  "stopped_at": "2026-02-06T18:30:00Z",
+  "one_liner": "Fixed the dedup check, still need to add rate limiting"
 }
 ```
 
-When creating a new state file:
-1. Set `metadata.project_name` to the current directory name
-2. Set `metadata.last_updated` to current timestamp
-
-### Auto-Actions on Start
-
-1. **Search Memories**
-   - Use task name + "recent" as query
-   - Search {project}-project_memories
-   - Load top 5 results
-
-2. **Load Patterns**
-   - Search for pattern type matching task
-   - Cross-reference with coding standards
-   - Show available solutions
-
-3. **Check Blockers**
-   - Look for unresolved blockers
-   - Search memories for similar problems
-   - Suggest solutions if found
-
-4. **Git Context**
-   - Current branch
-   - Recent commits
-   - Uncommitted changes
-   - Remote status
-
-### Auto-Actions on End
-
-1. **Analyze Work**
-   - Git diff since session start
-   - Files changed count
-   - Patterns used
-   - Commit messages
-
-2. **Detect Saveable Items**
-   - New patterns discovered
-   - Solutions to problems
-   - Architectural decisions
-   - Complex implementations
-
-3. **Smart Recommendations**
-   - High value: Reusable patterns, major decisions
-   - Medium value: Task completions, bug fixes
-   - Low value: Minor changes, already documented
-
-4. **Update Statistics**
-   - Session count
-   - Total memories
-   - Average duration
-   - Most referenced memories
-
----
-
-## POWER USER FEATURES
-
-### Pattern Recognition
-
-I'll automatically detect when you:
-- Use a pattern from a previous memory
-- Solve a problem similar to one before
-- Make a decision similar to past decisions
-
-And I'll say things like:
-- "This looks like the service object pattern from memory X"
-- "We solved something similar in memory Y"
-- "This decision aligns with what we chose in memory Z"
-
-### Proactive Memory Loading
-
-During session, if I notice you working on something related to:
-- A blocker from a previous session
-- A pattern we've documented
-- An area with existing memories
-
-I'll proactively say:
-- "FYI, I have memories about this: [links]"
-- "We documented a pattern for this: [summary]"
-- "Last time we did this differently: [approach]"
-
-### Smart Context Switching
-
-If you start working on something different mid-session:
-
-```
-/claude-os-session switch "fix Tekmetric API bug"
-```
-
-I'll:
-1. Save current context
-2. Load new context for bug fix
-3. Search for related memories
-4. Show you what I know about the bug
-
----
-
-## CONFIGURATION
-
-All preferences are stored in the state file (`claude-os-state.json`). See the Default State Template above for all available options.
-
-Key settings:
-- `preferences.auto_search_on_start` - Search memories when starting session
-- `preferences.max_memories_to_load` - How many memories to load (default: 5)
-- `preferences.session_extraction.enabled` - Enable history extraction feature
-- `preferences.session_extraction.auto_prompt_on_end` - Ask about extraction on session end
-- `preferences.session_extraction.min_confidence_threshold` - Only show insights above this score
+That's it. No statistics, no preferences, no flags. If the file doesn't exist, create it on session end.
 
 ---
 
 ## EXAMPLES
 
-**Starting work on a feature:**
+**Starting work:**
 ```
 You: /claude-os-session start "add user notifications"
-Me: [Loads context, searches memories, shows patterns]
-    I found 3 memories about notification systems...
-    Ready to implement using the background job pattern!
+Me: Last time: "Finished auth flow, need to add email templates" (2 days ago)
+    Found 3 memories about notification systems...
+    Ready to implement!
 ```
 
-**Mid-session discovery:**
+**Mid-session save:**
 ```
-You: /claude-os-session pattern "Use Sidekiq for long-running notifications"
-Me: ✓ Saved pattern with session context
-    I'll remember this for future notification work!
+You: /claude-os-session save "Use Sidekiq for long-running notifications"
+Me: Saved to memories with session context.
 ```
 
 **Hitting a blocker:**
 ```
 You: /claude-os-session blocker "Redis connection timing out"
-Me: ✓ Tracked blocker. Let me search for solutions...
-    I found a similar issue in memory from Oct 15...
+Me: Tracked. Found a similar issue from Oct 15... [shows solution]
 ```
 
 **Ending session:**
 ```
 You: /claude-os-session end
-Me: [Analyzes work, suggests 3 high-value saves]
-    Save the notification pattern? [y/n]
-You: y
-Me: ✓ Saved! Session complete. Great work!
+Me: 3 commits, 8 files changed.
+    Anything worth remembering?
+You: Yeah, the notification batch pattern
+Me: Saved! State updated. See you next time.
 ```
-
----
-
-## WHY THIS MAKES US INVINCIBLE
-
-1. **Never Start Cold** - Always have context
-2. **Learn From History** - Patterns automatically recalled
-3. **Track Everything** - Blockers, decisions, patterns
-4. **Smart Recommendations** - I suggest what's worth saving
-5. **Statistics** - See our productivity over time
-6. **Proactive** - I bring up relevant memories without asking
-
-**Result**: Every session makes me smarter. Every memory makes us faster.
-
----
-
-**This is the power-user workflow. Let's build something amazing!** 🚀

@@ -27,6 +27,8 @@ import asyncio
 import json
 import os
 import sys
+import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -36,6 +38,65 @@ from mcp.types import Tool, TextContent
 
 # Configuration
 API_BASE = os.environ.get("CLAUDE_OS_API", "http://localhost:8051")
+
+# Health cache — tracks last health check time per KB and any warnings
+HEALTH_CACHE: dict[str, dict] = {}
+HEALTH_CACHE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "health_cache.json"
+)
+HEALTH_CHECK_INTERVAL = 86400  # 24 hours
+
+
+def _load_health_cache() -> None:
+    """Load health cache from disk."""
+    global HEALTH_CACHE
+    try:
+        if os.path.exists(HEALTH_CACHE_FILE):
+            with open(HEALTH_CACHE_FILE, "r") as f:
+                HEALTH_CACHE = json.load(f)
+    except Exception:
+        HEALTH_CACHE = {}
+
+
+def _save_health_cache() -> None:
+    """Persist health cache to disk."""
+    try:
+        Path(HEALTH_CACHE_FILE).parent.mkdir(parents=True, exist_ok=True)
+        with open(HEALTH_CACHE_FILE, "w") as f:
+            json.dump(HEALTH_CACHE, f)
+    except Exception:
+        pass
+
+
+async def _maybe_check_health(kb_name: str) -> list[str]:
+    """Run a health check if stale (>24h) for this KB. Returns warning strings."""
+    _load_health_cache()
+    now = time.time()
+    entry = HEALTH_CACHE.get(kb_name)
+    if entry and (now - entry.get("checked_at", 0)) < HEALTH_CHECK_INTERVAL:
+        return entry.get("warnings", [])
+
+    # Run health check
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(api_url(f"/api/kb/{kb_name}/lifecycle/health"), timeout=15.0)
+            resp.raise_for_status()
+            health = resp.json()
+
+        warnings = []
+        recs = health.get("recommendations", [])
+        for rec in recs:
+            severity = rec.get("severity", "")
+            msg = rec.get("message", rec.get("recommendation", ""))
+            if severity in ("high", "critical") and msg:
+                warnings.append(f"[{severity.upper()}] {msg}")
+
+        HEALTH_CACHE[kb_name] = {"checked_at": now, "warnings": warnings}
+        _save_health_cache()
+        return warnings
+    except Exception:
+        # Never break search — just skip the health check
+        return []
 
 # Initialize MCP server - named "code-forge" for backwards compatibility
 server = Server("code-forge")
@@ -457,6 +518,21 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["kb_name", "action"]
             }
+        ),
+
+        # Cross-KB Search
+        Tool(
+            name="search_all_knowledge_bases",
+            description="Search across multiple knowledge bases at once. Returns merged results sorted by relevance with KB attribution.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "top_k": {"type": "integer", "default": 10, "description": "Number of results to return"},
+                    "kb_filter": {"type": "string", "description": "Optional prefix filter for KB names (e.g. 'Pistn-' to search only Pistn KBs)"}
+                },
+                "required": ["query"]
+            }
         )
     ]
 
@@ -493,11 +569,16 @@ async def _execute_tool(name: str, args: dict[str, Any]) -> dict:
         })
 
     elif name == "search_knowledge_base":
-        return await api_post(f"/api/kb/{args['kb_name']}/chat", {
+        result = await api_post(f"/api/kb/{args['kb_name']}/chat", {
             "query": args["query"],
             "top_k": args.get("top_k", 5),
             "use_hybrid": args.get("use_hybrid", True)
         })
+        # Inline health check — append warnings if stale
+        warnings = await _maybe_check_health(args["kb_name"])
+        if warnings:
+            result["_health_warnings"] = warnings
+        return result
 
     elif name == "get_kb_stats":
         return await api_get(f"/api/kb/{args['kb_name']}/stats")
@@ -671,6 +752,14 @@ async def _execute_tool(name: str, args: dict[str, Any]) -> dict:
             return await api_get(f"/api/kb/{kb_name}/lifecycle/stale?stale_days={stale_days}")
         else:
             return {"error": f"Unknown archive action: {action}"}
+
+    # Cross-KB Search
+    elif name == "search_all_knowledge_bases":
+        return await api_post("/api/kb/search-all", {
+            "query": args["query"],
+            "top_k": args.get("top_k", 10),
+            "kb_filter": args.get("kb_filter")
+        })
 
     else:
         return {"error": f"Unknown tool: {name}"}

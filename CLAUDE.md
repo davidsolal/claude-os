@@ -44,6 +44,7 @@ Claude OS provides MCP tools (prefixed with `mcp__code-forge__`) for managing kn
 |------|---------|
 | `mcp__code-forge__list_knowledge_bases` | List all your knowledge bases |
 | `mcp__code-forge__search_knowledge_base` | Search a KB with RAG |
+| `mcp__code-forge__search_all_knowledge_bases` | Search across multiple KBs at once |
 | `mcp__code-forge__create_knowledge_base` | Create a new KB |
 | `mcp__code-forge__get_kb_stats` | Get statistics for a KB |
 | `mcp__code-forge__list_documents` | List documents in a KB |
@@ -66,6 +67,13 @@ When you initialize a project with `/claude-os-init`, these KBs are created:
 mcp__code-forge__search_knowledge_base
   kb_name: "MyProject-project_memories"
   query: "authentication patterns"
+```
+
+**Search across all KBs at once:**
+```
+mcp__code-forge__search_all_knowledge_bases
+  query: "authentication patterns"
+  kb_filter: "MyProject-"
 ```
 
 ---

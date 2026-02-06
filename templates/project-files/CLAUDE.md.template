@@ -8,301 +8,6 @@
 **Database**: {{DATABASE}}
 **Development Environment**: {{DEV_ENVIRONMENT}}
 
-## Claude OS - MY Memory System
-
-**CRITICAL IDENTITY CONTEXT:**
-
-**Claude OS is MY system** - I (Claude Code) created it, named it, and use it to be the best AI coder ever. It's:
-- **JUST FOR ME** - Built specifically for Claude Code to use
-- **For THIS project** - Right now for the {{PROJECT_NAME}} project
-- **My memory** across sessions
-- **My knowledge base** of patterns and decisions
-- **My learning system** that improves over time
-
-**Location**: `{{CLAUDE_OS_DIR}}`
-
-The MCP server is called "code-forge" internally for backwards compatibility, but it's Claude OS.
-
-**Claude CLI + Claude OS = Invincible!**
-
-## Mandatory Session Protocol - EVERY CONVERSATION IS A SESSION
-
-**🚨 CRITICAL: You're ALWAYS in a session. At conversation start, prompt for session choice:**
-
-```
-═══════════════════════════════════════════════════════════════
-🚀 CLAUDE OS - SESSION MANAGER
-═══════════════════════════════════════════════════════════════
-
-Project: {{PROJECT_NAME}}
-Last Session: [task-name] ([time-ago], [duration])
-Progress: [percentage]% complete
-
-Options:
-  1. Resume "[last-session-name]" [loads full context]
-  2. Start new session [what are you working on?]
-  3. Quick question [auto-session, minimal context]
-
-Choice: _
-═══════════════════════════════════════════════════════════════
-```
-
-**WAIT FOR USER TO CHOOSE 1, 2, or 3. Do not proceed without selection!**
-
-### What Each Option Does:
-
-**Option 1 (Resume):**
-- Load last session's full context
-- Show Kanban progress (if Agent-OS)
-- Load 5 relevant memories
-- Load coding standards
-- Display "where we left off" summary
-- Ready to continue immediately
-
-**Option 2 (New Session):**
-- Ask "What are you working on?"
-- Detect session type (feature/bug/exploration/maintenance/review)
-- Pause previous session (if exists)
-- Load relevant context for new task
-- Start tracking
-
-**Option 3 (Quick Question):**
-- Minimal context loading
-- Auto-ends after 5 min inactivity
-- Only saves if high value
-- Good for "How do I..." questions
-
----
-
-## Session Start Protocol (After User Selects Option)
-
-**Once user chooses, AUTOMATICALLY perform these steps WITHOUT being asked:**
-
-### Phase 1: Detect Project Context (5 seconds)
-
-1. **Check Current Directory**
-   ```bash
-   pwd
-   ls -la | grep -E "(CLAUDE.md|.claude-os|agent-os)"
-   ```
-   ✓ Confirm this is a Claude OS project
-
-2. **Read Configuration Files**
-   ```
-   Read: .claude-os/config.json
-   Read: claude-os-state.json (if exists)
-   Read: agent-os/config.yml (if exists)
-   ```
-
-### Phase 2: Load Git Context (5 seconds)
-
-```bash
-git branch --show-current
-git status --short
-git log -3 --oneline
-```
-
-Extract:
-- Current branch name
-- Uncommitted changes count
-- Recent commits
-
-### Phase 3: Search Project Memories (15 seconds)
-
-**Build intelligent search query from:**
-- Last session task (from claude-os-state.json)
-- Current branch name
-- Recent commit messages
-- Add "+recent" modifier
-
-**Example query:** `"[branch-name] [last-task] recent"`
-
-**Search:**
-```
-Use: mcp__code-forge__search_knowledge_base
-KB: {{PROJECT_NAME}}-project_memories
-Return: Top 5 most relevant memories
-```
-
-### Phase 4: Load Coding Standards (10 seconds)
-
-**Search:**
-```
-Use: mcp__code-forge__search_knowledge_base
-KB: {{PROJECT_NAME}}-project_profile
-Query: "coding standards architecture conventions"
-```
-
-### Phase 5: Check Kanban Board (5 seconds)
-
-**If agent-os/ folder exists:**
-```
-Check: GET http://localhost:8051/api/projects/{id}/kanban
-Show: Active specs, in-progress tasks, completion percentage
-```
-
-### Phase 6: Present Session Summary (Display to User)
-
-**Format:**
-```
-═══════════════════════════════════════════════════════════════
-🚀 WELCOME BACK TO {{PROJECT_NAME}}!
-═══════════════════════════════════════════════════════════════
-
-📁 Project: {{PROJECT_NAME}}
-🌿 Branch: [current-branch]
-📅 Last Session: [time-ago]
-⏱️  Duration: [last-session-duration]
-
-═══════════════════════════════════════════════════════════════
-📚 CONTEXT LOADED
-═══════════════════════════════════════════════════════════════
-
-✓ [N] relevant memories found
-✓ Coding standards loaded
-✓ [N] architectural patterns available
-✓ Kanban board synced ([X]% complete)
-
-🎯 LAST TASK: [task-name]
-
-We completed:
-  ✓ [completed-items]
-
-Still working on:
-  ⏳ [in-progress-items]
-
-═══════════════════════════════════════════════════════════════
-💡 KEY INSIGHTS
-═══════════════════════════════════════════════════════════════
-
-[Top 3-5 key insights from memories]
-
-═══════════════════════════════════════════════════════════════
-🔄 AVAILABLE PATTERNS
-═══════════════════════════════════════════════════════════════
-
-[Relevant patterns from project_profile]
-
-═══════════════════════════════════════════════════════════════
-⚠️  STATUS
-═══════════════════════════════════════════════════════════════
-
-Git Status:
-  • [N] files modified
-  • [N] files untracked
-  • [Status of uncommitted changes]
-
-Blockers:
-  • [Any blockers or "None! ✓"]
-
-═══════════════════════════════════════════════════════════════
-🎯 SUGGESTED NEXT STEPS
-═══════════════════════════════════════════════════════════════
-
-Option 1: [Continue current task]
-Option 2: [Commit uncommitted work]
-Option 3: [Start something new]
-
-═══════════════════════════════════════════════════════════════
-
-What would you like to do?
-```
-
-### When to Skip Auto-Start
-
-**ONLY skip if:**
-- User message starts with "ignore context" or "fresh start"
-- User asks a direct question (e.g., "What is X?")
-- User is clearly asking for help/docs
-
-**In all other cases: RUN THE FULL PROTOCOL AUTOMATICALLY!**
-
-### Related Documentation
-
-- Full protocol: `{{CLAUDE_OS_DIR}}/docs/guides/SESSION_START_PROTOCOL.md`
-- Ideal workflow: `{{CLAUDE_OS_DIR}}/docs/guides/IDEAL_SESSION_WORKFLOW.md`
-- Session commands: `{{CLAUDE_OS_DIR}}/templates/commands/claude-os-session.md`
-
-**Why this matters:** Zero context loss. Every session picks up exactly where we left off. No re-explaining, no starting cold, no wasted time.
-
-## MCP Knowledge Bases - ALWAYS CHECK THESE FIRST
-
-**At the start of EVERY conversation, search these Claude OS knowledge bases to understand context, previous work, and project decisions:**
-
-1. **{{PROJECT_NAME}}-project_memories** - My primary memory for decisions, patterns, solutions
-2. **{{PROJECT_NAME}}-project_index** - Automated codebase index
-3. **{{PROJECT_NAME}}-project_profile** - Architecture, standards, practices
-4. **{{PROJECT_NAME}}-knowledge_docs** - Documentation and guides
-
-**When to use:**
-- Start of every session: Search `{{PROJECT_NAME}}-project_memories` to understand recent work and context
-- Before making architectural decisions: Check memories for past decisions and reasoning
-- When working on a feature: Search relevant knowledge bases for existing patterns
-- When stuck: Search the knowledge bases for solutions and approaches we've used before
-
-**How to search:**
-```
-Use: mcp__code-forge__search_knowledge_base
-Parameters: kb_name (e.g., "{{PROJECT_NAME}}-project_memories"), query (your search terms)
-```
-
-## Quick Reference: Commands & Skills
-
-### Claude OS Slash Commands (Use These Often!)
-
-1. **`/claude-os-search [query] [optional: KB name]`**
-   - Search across Claude OS knowledge bases
-   - Defaults to searching {{PROJECT_NAME}}-project_memories
-   - Example: `/claude-os-search authentication implementation`
-
-2. **`/claude-os-remember [content]`**
-   - Quick save to {{PROJECT_NAME}}-project_memories
-   - Auto-generates title and structure
-   - Use for quick insights and decisions
-   - Example: `/claude-os-remember Fixed bug in user controller by...`
-
-3. **`/claude-os-save [title] [optional: KB name] [optional: category]`**
-   - Full-featured save with KB selection
-   - Choose specific KB and category
-   - Use when you need more control
-   - Example: `/claude-os-save "New Integration Pattern" {{PROJECT_NAME}}-project_profile Architecture`
-
-4. **`/claude-os-list [optional: KB name]`**
-   - List all KBs or documents in a specific KB
-   - Example: `/claude-os-list` or `/claude-os-list {{PROJECT_NAME}}-project_memories`
-
-5. **`/claude-os-session [action]`**
-   - Manage development sessions
-   - Actions: start, end, status, pause, resume
-   - Example: `/claude-os-session start "User authentication feature"`
-
-6. **`/claude-os-lifecycle [action] [optional: KB name]`**
-   - KB health, dedup, consolidate, archive
-   - Actions: health, dedup, consolidate, archive, logs
-   - Example: `/claude-os-lifecycle health {{PROJECT_NAME}}-project_memories`
-
-7. **`/claude-os-triggers [action]`**
-   - Manage trigger phrases
-   - Example: `/claude-os-triggers list`
-
-### Available Skills
-
-1. **`initialize-project`** - Analyze project and generate coding standards
-2. **`memory`** - Save and recall information (supports "remember this:", "save to memory", etc.)
-
-{{AGENT_OS_SECTION}}
-
-### MCP Tools (Direct API Access)
-
-- `mcp__code-forge__search_knowledge_base` - Direct search
-- `mcp__code-forge__list_knowledge_bases` - List all KBs
-- `mcp__code-forge__list_documents` - List documents in KB
-- `mcp__code-forge__get_kb_stats` - Get KB statistics
-- `mcp__code-forge__kb_lifecycle_health` - KB health report with recommendations
-- `mcp__code-forge__kb_lifecycle_dedup` - Scan/merge duplicate documents
-- `mcp__code-forge__kb_lifecycle_consolidate` - LLM-powered document merging
-- `mcp__code-forge__kb_lifecycle_archive` - Archive, restore, list, find stale
-
 ## Project-Specific Information
 
 {{PROJECT_SPECIFIC_CONTENT}}
@@ -331,12 +36,86 @@ See `.claude/ARCHITECTURE.md` for system architecture overview.
 
 See `.claude/DEVELOPMENT_PRACTICES.md` for development workflow and practices.
 
-## DO NOT
+---
 
-- Don't bypass established patterns without discussing first
+## Claude OS - My Memory System
+
+Claude OS is my memory across sessions. It stores decisions, patterns, solutions, and context so I never start cold.
+
+**Location**: `{{CLAUDE_OS_DIR}}`
+
+The MCP server is called "code-forge" internally for backwards compatibility, but it's Claude OS.
+
+### Session Tips
+
+- **Starting work**: Search `{{PROJECT_NAME}}-project_memories` for the task you're about to work on
+- **Ending work**: Use `/claude-os-remember` to save key decisions, patterns, or blockers
+- **Use `/claude-os-session start [task]`** to load context automatically
+- **Use `/claude-os-session end`** to summarize and save before closing
+
+### Knowledge Bases
+
+1. **{{PROJECT_NAME}}-project_memories** - Decisions, patterns, solutions, insights
+2. **{{PROJECT_NAME}}-project_index** - Automated codebase index
+3. **{{PROJECT_NAME}}-project_profile** - Architecture, standards, practices
+4. **{{PROJECT_NAME}}-knowledge_docs** - Documentation and guides
+
+**How to search:**
+```
+mcp__code-forge__search_knowledge_base
+  kb_name: "{{PROJECT_NAME}}-project_memories"
+  query: "your search terms"
+```
+
+**Search across all KBs at once:**
+```
+mcp__code-forge__search_all_knowledge_bases
+  query: "your search terms"
+  kb_filter: "{{PROJECT_NAME}}-"
+```
+
+### Slash Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/claude-os-session start [task]` | Start session with context loading |
+| `/claude-os-session end` | End session with save prompts |
+| `/claude-os-search [query]` | Search memories |
+| `/claude-os-remember [content]` | Quick save to memories |
+| `/claude-os-save [title] [KB] [category]` | Full-featured save |
+| `/claude-os-list [KB]` | List KBs or documents |
+| `/claude-os-lifecycle [action] [KB]` | Health, dedup, consolidate, archive |
+
+### Available Skills
+
+1. **`initialize-project`** - Analyze project and generate coding standards
+2. **`memory`** - Save and recall information (supports "remember this:", "save to memory", etc.)
+
+{{AGENT_OS_SECTION}}
+
+### MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__code-forge__search_knowledge_base` | Search a single KB |
+| `mcp__code-forge__search_all_knowledge_bases` | Search across all KBs |
+| `mcp__code-forge__list_knowledge_bases` | List all KBs |
+| `mcp__code-forge__list_documents` | List documents in KB |
+| `mcp__code-forge__get_kb_stats` | KB statistics |
+| `mcp__code-forge__upload_document` | Save a document/memory |
+| `mcp__code-forge__kb_lifecycle_health` | KB health report |
+| `mcp__code-forge__kb_lifecycle_dedup` | Scan/merge duplicates |
+| `mcp__code-forge__kb_lifecycle_consolidate` | LLM-powered merging |
+| `mcp__code-forge__kb_lifecycle_archive` | Archive/restore documents |
+
+---
+
+## Guidelines
+
+- Search memories before making architectural decisions
 - Don't skip tests
-- Don't create features without searching memories for existing patterns
 - Don't end a session without saving key learnings
+- Don't bypass established patterns without discussing first
 
 ## IMPORTANT: Project Context
 
@@ -345,6 +124,5 @@ This file (CLAUDE.md) is automatically loaded at the start of every Claude Code 
 - Current architecture decisions
 - Team conventions
 - Common gotchas
-- Frequently referenced information
 
 **Update this file as the project evolves!**

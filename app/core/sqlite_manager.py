@@ -424,6 +424,76 @@ class SQLiteManager:
         finally:
             conn.close()
 
+    def query_documents_multi_kb(
+        self,
+        kb_names: List[str],
+        query_embedding: List[float],
+        n_results: int = 10
+    ) -> Dict[str, Any]:
+        """Query documents across multiple knowledge bases, merge by score, deduplicate."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            query_vec = np.array(query_embedding, dtype=np.float32)
+            all_results: List[Tuple[str, str, str, float, str]] = []  # (doc_id, content, metadata, similarity, kb_name)
+
+            for kb_name in kb_names:
+                cursor.execute("SELECT id FROM knowledge_bases WHERE name = ?", (kb_name,))
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                kb_id = row['id']
+
+                cursor.execute(
+                    "SELECT doc_id, content, embedding, metadata FROM documents WHERE kb_id = ?",
+                    (kb_id,)
+                )
+                for doc_row in cursor.fetchall():
+                    if doc_row['embedding'] is None:
+                        continue
+                    emb = np.frombuffer(doc_row['embedding'], dtype=np.float32)
+                    dot_product = np.dot(query_vec, emb)
+                    norm_query = np.linalg.norm(query_vec)
+                    norm_emb = np.linalg.norm(emb)
+                    if norm_query > 0 and norm_emb > 0:
+                        similarity = float(dot_product / (norm_query * norm_emb))
+                    else:
+                        similarity = 0.0
+                    all_results.append((doc_row['doc_id'], doc_row['content'], doc_row['metadata'], similarity, kb_name))
+
+            # Sort by similarity descending
+            all_results.sort(key=lambda x: x[3], reverse=True)
+
+            # Deduplicate by content prefix (first 200 chars)
+            seen_prefixes: set = set()
+            deduped: List[Tuple[str, str, str, float, str]] = []
+            for r in all_results:
+                prefix = (r[1] or "")[:200]
+                if prefix in seen_prefixes:
+                    continue
+                seen_prefixes.add(prefix)
+                deduped.append(r)
+
+            top = deduped[:n_results]
+
+            ids = [r[0] for r in top]
+            documents = [r[1] for r in top]
+            metadatas = []
+            for r in top:
+                meta = json.loads(r[2]) if r[2] else {}
+                meta["_source_kb"] = r[4]
+                metadatas.append(meta)
+            scores = [r[3] for r in top]
+
+            return {
+                "ids": ids,
+                "documents": documents,
+                "metadatas": metadatas,
+                "scores": scores
+            }
+        finally:
+            conn.close()
+
     def collection_exists(self, kb_name: str) -> bool:
         """Check if a knowledge base exists."""
         conn = self.get_connection()

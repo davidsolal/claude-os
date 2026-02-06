@@ -30,18 +30,6 @@
 
 ---
 
-<p align="center">
-  <a href="https://discord.gg/BrvVYdXkCU">
-    <img src="https://img.shields.io/badge/Join_our_Discord!-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join Discord">
-  </a>
-</p>
-
-<p align="center">
-  <strong>We have a Discord!</strong> Join our community to get help, share your projects, and connect with other Claude OS users.
-</p>
-
----
-
 ## ✨ The Magic
 
 **You:** "Remember this: our API uses JWT tokens with 15-minute expiry and 7-day refresh tokens"
@@ -60,80 +48,65 @@ That's it. Next week, next month, next project - Claude remembers. No commands t
 
 ---
 
-## 🆕 What's New in v2.3
+## 🆕 What's New in v2.5
 
-> **Latest Release: December 2025**
+> **Latest Release: February 2026**
 
-### 🎯 Skills Library & Community Skills
+### 🔍 Cross-KB Search
 
-Browse and install **36+ skills** from the community with one click!
+Search across **all your knowledge bases at once** with a single query!
 
-```bash
-/claude-os-skills                    # List all skills
-/claude-os-skills install pdf        # Install from community
+```
+mcp__code-forge__search_all_knowledge_bases
+  query: "authentication patterns"
+  kb_filter: "MyProject-"          # optional: limit to one project's KBs
 ```
 
-**New Features:**
-- 📚 **Local Templates** - Pre-built skills for Rails, React, testing workflows
-- 🌐 **Community Skills** - Install from Anthropic Official (16) & Superpowers (20)
-- 🔧 **Custom Skills** - Create and share project-specific skills
-- 🎨 **Beautiful UI** - Browse, search, and install via web interface
-- 📖 **[Recommended Skills](https://github.com/brobertsaz/claude-os/wiki/Recommended-Skills)** - Our curated list of skills we actually use and trust
+- Results merged by relevance score with KB attribution
+- Automatic deduplication across KBs
+- Optional prefix filter to scope by project
+- New API endpoint: `POST /api/kb/search-all`
 
-### 📊 Session Insights
+### 🩺 Inline Health Checks
 
-Parse Claude Code sessions and extract insights automatically!
+Health checks now run **automatically** during search — no manual invocation needed.
 
-**New Features:**
-- 🔍 **Session Parser** - Reads Claude Code's native `.jsonl` session files
-- 💡 **Insight Extraction** - Extracts patterns, decisions, blockers
-- 📈 **Analytics Ready** - Track tool usage and file changes across sessions
+- When you search a KB, Claude OS checks if a health report has been run in the last 24 hours
+- If stale, runs a quick health check and appends HIGH/CRITICAL warnings to the search result
+- Cached in `data/health_cache.json` — never slows down or breaks search
+- Look for `_health_warnings` in search results
 
-### ✨ Beautiful New Installer (v2.2)
+### 📝 Simplified Session Management
 
-The installer got a major upgrade with **Charm CLI (gum)** support!
+Session state reduced from a 50-field JSON blob to **4 fields**:
 
-```bash
-./setup-claude-os.sh --demo    # See the beautiful UI without changes
-./setup-claude-os.sh --dry-run # Preview what would happen
-./setup-claude-os.sh --help    # See all options
+```json
+{
+  "last_task": "Fix appointment email flood",
+  "last_branch": "fix-email-flood",
+  "stopped_at": "2026-02-06T18:30:00Z",
+  "one_liner": "Fixed dedup check, still need rate limiting"
+}
 ```
 
-**New Features:**
-- 🎨 **Gum Integration** - Beautiful interactive menus with arrow-key navigation (with graceful bash fallback)
-- 🛡️ **Safety Features** - `--demo`, `--dry-run`, and automatic config backups
-- 💨 **Lite Model Default** - Now defaults to `llama3.2:3b` (2GB) instead of 8b (4.7GB)
-- ☁️ **Cloud Option** - Choose between Local (Ollama) or Cloud (OpenAI) during setup
-- 🐧 **Better Linux Support** - Improved package manager detection and installation
+- START: read state, show one-liner, search memories, ready
+- END: git diff summary, offer to save, write state
+- `save`, `blocker`, `pattern` sub-commands unchanged
 
-**Safety First:**
-- `--demo` - Try the installer UI without making any changes
-- `--dry-run` - See exactly what would be done before doing it
-- Auto-backup - Existing `.env` files backed up before overwriting
+### 📄 Leaner CLAUDE.md Template
 
-### 🔬 Knowledge Lifecycle Engine
+Project CLAUDE.md template cut from 351 to **128 lines**:
 
-Keep your knowledge bases healthy and focused!
-
-```bash
-/claude-os-lifecycle health my-kb        # Health report with recommendations
-/claude-os-lifecycle dedup my-kb         # Find and merge duplicate memories
-/claude-os-lifecycle consolidate my-kb   # LLM-powered document merging
-/claude-os-lifecycle archive my-kb       # Find stale docs, archive/restore
-```
-
-**New Features:**
-- 🔍 **Duplicate Detection** - Embedding-based similarity scanning with union-find clustering
-- 🧹 **Smart Merging** - Keep the best doc, delete the rest, or LLM-merge into one
-- 📦 **Archival System** - Soft-archive stale docs without permanent deletion
-- 📊 **Health Reports** - Embedding coverage, age distribution, actionable recommendations
-- 📈 **Growth Timeline** - Track KB growth over time by day/week/month
-- 📋 **Audit Logging** - Full operation history for all lifecycle actions
+- Removed 200-line mandatory session protocol (6-phase startup, ASCII prompts)
+- Replaced with 4-line "Session Tips" section
+- Project content first, Claude OS section second
+- All template variables preserved
 
 ### 📋 Recent Improvements
 
 | Version | Highlights |
 |---------|------------|
+| **v2.5** | Cross-KB search, inline health checks, simplified sessions, leaner templates |
 | **v2.4** | Knowledge lifecycle engine (dedup, consolidate, archive, health) |
 | **v2.3** | Skills library, community skills, session insights |
 | **v2.2** | Gum CLI support, safety features, lite model default |
