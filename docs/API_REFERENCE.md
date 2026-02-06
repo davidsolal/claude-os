@@ -17,9 +17,10 @@ Complete reference for all Claude OS MCP Server API endpoints.
 7. [Real-Time Spec Watcher](#real-time-spec-watcher-new)
 8. [Hooks System](#hooks-system)
 9. [File Watcher](#file-watcher)
-10. [Authentication](#authentication)
-11. [Utilities](#utilities)
-12. [Health Check](#health-check)
+10. [Knowledge Lifecycle](#knowledge-lifecycle-new)
+11. [Authentication](#authentication)
+12. [Utilities](#utilities)
+13. [Health Check](#health-check)
 
 ---
 
@@ -1443,6 +1444,329 @@ curl "http://localhost:8051/api/kb/myproject-code_structure/repo-map?token_budge
 
 ---
 
+## Knowledge Lifecycle (NEW)
+
+Manage the health and lifecycle of knowledge base documents: deduplication, consolidation, archival, and analytics.
+
+All endpoints are under `/api/kb/{kb_name}/lifecycle/`.
+
+---
+
+### Dedup Scan
+
+Scan for duplicate/near-duplicate documents using embedding similarity.
+
+```http
+POST /api/kb/{kb_name}/lifecycle/dedup-scan
+Content-Type: application/json
+
+{
+  "threshold": 0.85,
+  "max_pairs": 100
+}
+```
+
+**Response (sync for <500 docs):**
+```json
+{
+  "total_documents": 47,
+  "duplicate_pairs": [
+    {
+      "doc_a": "doc-abc123",
+      "doc_b": "doc-def456",
+      "similarity": 0.94,
+      "content_a_preview": "Authentication using JWT...",
+      "content_b_preview": "JWT token authentication..."
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "doc-abc123",
+      "doc_ids": ["doc-abc123", "doc-def456", "doc-ghi789"],
+      "size": 3
+    }
+  ],
+  "duplicate_density": 0.064
+}
+```
+
+**Response (background for >500 docs):**
+```json
+{
+  "success": true,
+  "job_id": "dedup-my-kb-a1b2c3d4",
+  "mode": "background",
+  "message": "Dedup scan started in background. Check GET /api/jobs/dedup-my-kb-a1b2c3d4"
+}
+```
+
+---
+
+### Dedup Merge
+
+Merge duplicates by keeping one document and deleting the rest.
+
+```http
+POST /api/kb/{kb_name}/lifecycle/dedup-merge
+Content-Type: application/json
+
+{
+  "keep_doc_id": "doc-abc123",
+  "remove_doc_ids": ["doc-def456", "doc-ghi789"],
+  "dry_run": false
+}
+```
+
+**Response:**
+```json
+{
+  "dry_run": false,
+  "keep_doc_id": "doc-abc123",
+  "removed": ["doc-def456", "doc-ghi789"],
+  "deleted_count": 2
+}
+```
+
+---
+
+### Consolidate
+
+Consolidate multiple related documents into a single merged document using LLM-powered summarization. Always runs in background (LLM call).
+
+```http
+POST /api/kb/{kb_name}/lifecycle/consolidate
+Content-Type: application/json
+
+{
+  "doc_ids": ["doc-abc123", "doc-def456", "doc-ghi789"],
+  "new_filename": "consolidated-auth-patterns.md",
+  "dry_run": false
+}
+```
+
+**Response (dry_run=true):**
+```json
+{
+  "dry_run": true,
+  "source_doc_ids": ["doc-abc123", "doc-def456"],
+  "source_count": 2,
+  "total_chars": 4250,
+  "previews": ["Authentication using JWT...", "JWT token auth..."]
+}
+```
+
+**Response (dry_run=false):**
+```json
+{
+  "success": true,
+  "job_id": "consolidate-my-kb-e5f6g7h8",
+  "mode": "background",
+  "message": "Consolidation started. Check GET /api/jobs/consolidate-my-kb-e5f6g7h8"
+}
+```
+
+---
+
+### Health Report
+
+Get a comprehensive health report for a knowledge base.
+
+```http
+GET /api/kb/{kb_name}/lifecycle/health
+```
+
+**Response:**
+```json
+{
+  "kb_name": "my-project-project_memories",
+  "document_count": 47,
+  "chunk_count": 47,
+  "last_updated": "2026-02-05T10:30:00",
+  "embedding_coverage": {
+    "total_docs": 47,
+    "with_embeddings": 42,
+    "without_embeddings": 5,
+    "coverage_pct": 89.4
+  },
+  "archived_count": 3,
+  "top_similar_pairs": [
+    {"doc_a": "doc-abc", "doc_b": "doc-def", "similarity": 0.94}
+  ],
+  "age_distribution": {
+    "last_7_days": 8,
+    "last_30_days": 15,
+    "last_90_days": 12,
+    "older": 12
+  },
+  "recent_operations": [],
+  "recommendations": [
+    {
+      "type": "dedup",
+      "priority": "high",
+      "message": "Found 3 highly similar document pairs. Consider running dedup scan."
+    }
+  ]
+}
+```
+
+---
+
+### Growth Timeline
+
+Get document growth timeline grouped by period.
+
+```http
+GET /api/kb/{kb_name}/lifecycle/growth?granularity=month
+```
+
+**Query Parameters:**
+- `granularity` - `day`, `week`, or `month` (default: `month`)
+
+**Response:**
+```json
+{
+  "kb_name": "my-project-project_memories",
+  "granularity": "month",
+  "timeline": [
+    {"period": "2025-10", "added": 12, "total": 12},
+    {"period": "2025-11", "added": 20, "total": 32},
+    {"period": "2025-12", "added": 15, "total": 47}
+  ],
+  "total_documents": 47
+}
+```
+
+---
+
+### Archive Documents
+
+Soft-archive documents (excluded from search but restorable).
+
+```http
+POST /api/kb/{kb_name}/lifecycle/archive
+Content-Type: application/json
+
+{
+  "doc_ids": ["doc-abc123", "doc-def456"],
+  "reason": "stale - over 90 days"
+}
+```
+
+**Response:**
+```json
+{
+  "archived_count": 2,
+  "doc_ids": ["doc-abc123", "doc-def456"],
+  "reason": "stale - over 90 days"
+}
+```
+
+---
+
+### Restore Documents
+
+Restore previously archived documents.
+
+```http
+POST /api/kb/{kb_name}/lifecycle/restore
+Content-Type: application/json
+
+{
+  "doc_ids": ["doc-abc123"]
+}
+```
+
+**Response:**
+```json
+{
+  "restored_count": 1,
+  "doc_ids": ["doc-abc123"]
+}
+```
+
+---
+
+### List Archived
+
+List all archived documents in a knowledge base.
+
+```http
+GET /api/kb/{kb_name}/lifecycle/archived
+```
+
+**Response:**
+```json
+{
+  "kb_name": "my-project-project_memories",
+  "archived_count": 3,
+  "archived_documents": [
+    {
+      "doc_id": "doc-abc123",
+      "content_preview": "Old authentication pattern...",
+      "archived_at": "2026-02-01T10:00:00",
+      "archive_reason": "stale - over 90 days"
+    }
+  ]
+}
+```
+
+---
+
+### Find Stale Documents
+
+Find documents older than a specified threshold.
+
+```http
+GET /api/kb/{kb_name}/lifecycle/stale?stale_days=90
+```
+
+**Response:**
+```json
+{
+  "kb_name": "my-project-project_memories",
+  "stale_days_threshold": 90,
+  "stale_count": 5,
+  "stale_documents": [
+    {"filename": "old-pattern.md", "upload_date": "2025-09-15T10:00:00", "age_days": 142}
+  ]
+}
+```
+
+---
+
+### Lifecycle Logs
+
+Get audit log of lifecycle operations.
+
+```http
+GET /api/kb/{kb_name}/lifecycle/logs?operation_type=dedup_scan&limit=50
+```
+
+**Query Parameters:**
+- `operation_type` (optional) - Filter by type: `dedup_scan`, `dedup_merge`, `consolidate`, `archive`, `restore`
+- `limit` (optional) - Max results (default: 50)
+
+**Response:**
+```json
+{
+  "logs": [
+    {
+      "id": 1,
+      "kb_name": "my-project-project_memories",
+      "operation_type": "dedup_scan",
+      "status": "completed",
+      "input_doc_ids": [],
+      "output_doc_ids": [],
+      "details": {"total_documents": 47, "pairs_found": 3},
+      "created_at": "2026-02-06T10:30:00",
+      "completed_at": "2026-02-06T10:30:02"
+    }
+  ]
+}
+```
+
+---
+
 ## Support
 
 For issues, questions, or contributions:
@@ -1451,5 +1775,5 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated:** 2025-12-11
-**API Version:** 2.3
+**Last Updated:** 2026-02-06
+**API Version:** 2.4

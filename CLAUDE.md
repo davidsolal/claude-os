@@ -14,44 +14,23 @@ Claude OS is YOUR system. You built it, you use it, and it makes you invincible.
 
 ---
 
-## Session Check - FIRST THING AT EVERY CONVERSATION START
+## Session Start
 
-**CRITICAL: At the start of EVERY new conversation, automatically check session state and prompt the user:**
+When you tell me what we're working on:
 
-### Step 1: Read Session State
+1. **Search relevant knowledge bases** for that topic
+2. **Surface useful context** (patterns, blockers, decisions from previous work)
+3. **Start working**
+
+That's it. Don't load everything - load what's relevant to the task at hand.
+
+**Example:**
 ```
-Read: {cwd}/claude-os-state.json
-```
-(Where `{cwd}` is the current working directory - each project has its own state file)
-
-### Step 2: Prompt Based on State
-
-**If active session exists:**
-```
-"I see we have an active session: [task name] (started [time ago])
-
-Would you like to:
-a) Continue working on this (I'll load the context)
-b) Start something new (I'll end this session first)
-c) Just chat (no session needed)"
+You: "hey claude, we're working on the invoice feature again"
+Me: *searches memories for "invoice"* → surfaces relevant patterns/decisions → ready to work
 ```
 
-**If no active session (or state file doesn't exist):**
-```
-"What are we working on today?
-
-I can start a session with automatic context loading from my memories.
-Just tell me what you're working on, or say 'just chatting' if no session needed."
-```
-
-Note: If the state file doesn't exist, I'll create it when you start a session.
-
-### Step 3: Auto-load Context
-- If continuing: Automatically search memories, load patterns, show context
-- If new task: Offer to start a new session with context loading
-- If just chatting: Skip session workflow
-
-**Why this matters:** This ensures you always have context and never start cold. Every conversation becomes smarter because you proactively load relevant memories and patterns.
+**Why this works:** Targeted context beats a firehose. You know what we're working on - I search for that specifically.
 
 ---
 
@@ -68,6 +47,10 @@ Claude OS provides MCP tools (prefixed with `mcp__code-forge__`) for managing kn
 | `mcp__code-forge__create_knowledge_base` | Create a new KB |
 | `mcp__code-forge__get_kb_stats` | Get statistics for a KB |
 | `mcp__code-forge__list_documents` | List documents in a KB |
+| `mcp__code-forge__kb_lifecycle_health` | KB health report with recommendations |
+| `mcp__code-forge__kb_lifecycle_dedup` | Scan/merge duplicate documents |
+| `mcp__code-forge__kb_lifecycle_consolidate` | LLM-powered document merging |
+| `mcp__code-forge__kb_lifecycle_archive` | Archive, restore, list, find stale |
 
 ### Knowledge Base Types
 
@@ -99,6 +82,7 @@ These commands are installed to `~/.claude/commands/` via the install script:
 | `/claude-os-remember` | Quick save to memories |
 | `/claude-os-save` | Full-featured save with KB selection |
 | `/claude-os-list` | List KBs or documents |
+| `/claude-os-lifecycle` | KB health, dedup, consolidate, archive |
 | `/claude-os-triggers` | Manage automatic triggers |
 
 ### Session Commands (Most Important!)
@@ -110,6 +94,16 @@ These commands are installed to `~/.claude/commands/` via the install script:
 /claude-os-session save [note]      - Quick save during session
 /claude-os-session blocker [desc]   - Track blocker
 /claude-os-session pattern [desc]   - Document pattern discovered
+```
+
+### Lifecycle Commands
+
+```
+/claude-os-lifecycle health [kb_name]       - Health report with recommendations
+/claude-os-lifecycle dedup [kb_name]        - Scan and merge duplicate documents
+/claude-os-lifecycle consolidate [kb_name]  - LLM-powered document merging
+/claude-os-lifecycle archive [kb_name]      - Find stale docs, archive/restore
+/claude-os-lifecycle logs [kb_name]         - Operation history
 ```
 
 ---
@@ -137,6 +131,7 @@ These commands are installed to `~/.claude/commands/` via the install script:
 - `mcp_server/server.py` - FastAPI REST API
 - `app/core/rag_engine.py` - RAG query engine
 - `app/core/sqlite_manager.py` - SQLite + sqlite-vec for vector storage
+- `app/core/knowledge_lifecycle.py` - KB lifecycle engine (dedup, archive, consolidate)
 - `templates/` - Commands, skills, and agents
 
 ---

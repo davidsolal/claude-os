@@ -398,6 +398,65 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["name", "project_path"]
             }
+        ),
+
+        # Knowledge Lifecycle Tools
+        Tool(
+            name="kb_lifecycle_health",
+            description="Get a comprehensive health report for a knowledge base including duplicate detection, embedding coverage, age distribution, and recommendations.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_name": {"type": "string", "description": "Name of the knowledge base"}
+                },
+                "required": ["kb_name"]
+            }
+        ),
+        Tool(
+            name="kb_lifecycle_dedup",
+            description="Scan for and merge duplicate documents in a knowledge base. Use action='scan' to find duplicates, action='merge' to merge them.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_name": {"type": "string", "description": "Name of the knowledge base"},
+                    "action": {"type": "string", "enum": ["scan", "merge"], "description": "Action to perform: scan for duplicates or merge them"},
+                    "threshold": {"type": "number", "default": 0.85, "description": "Similarity threshold for scan (0.0-1.0)"},
+                    "max_pairs": {"type": "integer", "default": 100, "description": "Maximum duplicate pairs to return"},
+                    "keep_doc_id": {"type": "string", "description": "Document ID to keep (required for merge)"},
+                    "remove_doc_ids": {"type": "array", "items": {"type": "string"}, "description": "Document IDs to remove (required for merge)"},
+                    "dry_run": {"type": "boolean", "default": False, "description": "Preview changes without applying"}
+                },
+                "required": ["kb_name", "action"]
+            }
+        ),
+        Tool(
+            name="kb_lifecycle_consolidate",
+            description="Consolidate multiple related documents into a single merged document using LLM-powered summarization.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_name": {"type": "string", "description": "Name of the knowledge base"},
+                    "doc_ids": {"type": "array", "items": {"type": "string"}, "description": "Document IDs to consolidate"},
+                    "new_filename": {"type": "string", "description": "Filename for the consolidated document"},
+                    "dry_run": {"type": "boolean", "default": False, "description": "Preview without consolidating"}
+                },
+                "required": ["kb_name", "doc_ids", "new_filename"]
+            }
+        ),
+        Tool(
+            name="kb_lifecycle_archive",
+            description="Manage document archival: archive, restore, list archived, or find stale documents.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_name": {"type": "string", "description": "Name of the knowledge base"},
+                    "action": {"type": "string", "enum": ["archive", "restore", "list", "stale"], "description": "Archival action to perform"},
+                    "doc_ids": {"type": "array", "items": {"type": "string"}, "description": "Document IDs (required for archive/restore)"},
+                    "reason": {"type": "string", "default": "manual", "description": "Reason for archiving"},
+                    "stale_days": {"type": "integer", "default": 90, "description": "Days threshold for stale detection"}
+                },
+                "required": ["kb_name", "action"]
+            }
         )
     ]
 
@@ -478,7 +537,7 @@ async def _execute_tool(name: str, args: dict[str, Any]) -> dict:
 
     # Document Management
     elif name == "upload_document":
-        return await api_post(f"/api/kb/{args['kb_name']}/import", {
+        return await api_post(f"/api/kb/{args['kb_name']}/documents/content", {
             "content": args["content"],
             "filename": args["filename"],
             "metadata": {
@@ -564,6 +623,54 @@ async def _execute_tool(name: str, args: dict[str, Any]) -> dict:
 
     elif name == "delete_skill":
         return await api_delete(f"/api/skills/{args['name']}?project_path={args['project_path']}")
+
+    # Knowledge Lifecycle Tools
+    elif name == "kb_lifecycle_health":
+        return await api_get(f"/api/kb/{args['kb_name']}/lifecycle/health")
+
+    elif name == "kb_lifecycle_dedup":
+        action = args["action"]
+        kb_name = args["kb_name"]
+        if action == "scan":
+            return await api_post(f"/api/kb/{kb_name}/lifecycle/dedup-scan", {
+                "threshold": args.get("threshold", 0.85),
+                "max_pairs": args.get("max_pairs", 100)
+            })
+        elif action == "merge":
+            return await api_post(f"/api/kb/{kb_name}/lifecycle/dedup-merge", {
+                "keep_doc_id": args["keep_doc_id"],
+                "remove_doc_ids": args["remove_doc_ids"],
+                "dry_run": args.get("dry_run", False)
+            })
+        else:
+            return {"error": f"Unknown dedup action: {action}"}
+
+    elif name == "kb_lifecycle_consolidate":
+        return await api_post(f"/api/kb/{args['kb_name']}/lifecycle/consolidate", {
+            "doc_ids": args["doc_ids"],
+            "new_filename": args["new_filename"],
+            "dry_run": args.get("dry_run", False)
+        })
+
+    elif name == "kb_lifecycle_archive":
+        action = args["action"]
+        kb_name = args["kb_name"]
+        if action == "archive":
+            return await api_post(f"/api/kb/{kb_name}/lifecycle/archive", {
+                "doc_ids": args["doc_ids"],
+                "reason": args.get("reason", "manual")
+            })
+        elif action == "restore":
+            return await api_post(f"/api/kb/{kb_name}/lifecycle/restore", {
+                "doc_ids": args["doc_ids"]
+            })
+        elif action == "list":
+            return await api_get(f"/api/kb/{kb_name}/lifecycle/archived")
+        elif action == "stale":
+            stale_days = args.get("stale_days", 90)
+            return await api_get(f"/api/kb/{kb_name}/lifecycle/stale?stale_days={stale_days}")
+        else:
+            return {"error": f"Unknown archive action: {action}"}
 
     else:
         return {"error": f"Unknown tool: {name}"}

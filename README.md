@@ -111,10 +111,30 @@ The installer got a major upgrade with **Charm CLI (gum)** support!
 - `--dry-run` - See exactly what would be done before doing it
 - Auto-backup - Existing `.env` files backed up before overwriting
 
+### 🔬 Knowledge Lifecycle Engine
+
+Keep your knowledge bases healthy and focused!
+
+```bash
+/claude-os-lifecycle health my-kb        # Health report with recommendations
+/claude-os-lifecycle dedup my-kb         # Find and merge duplicate memories
+/claude-os-lifecycle consolidate my-kb   # LLM-powered document merging
+/claude-os-lifecycle archive my-kb       # Find stale docs, archive/restore
+```
+
+**New Features:**
+- 🔍 **Duplicate Detection** - Embedding-based similarity scanning with union-find clustering
+- 🧹 **Smart Merging** - Keep the best doc, delete the rest, or LLM-merge into one
+- 📦 **Archival System** - Soft-archive stale docs without permanent deletion
+- 📊 **Health Reports** - Embedding coverage, age distribution, actionable recommendations
+- 📈 **Growth Timeline** - Track KB growth over time by day/week/month
+- 📋 **Audit Logging** - Full operation history for all lifecycle actions
+
 ### 📋 Recent Improvements
 
 | Version | Highlights |
 |---------|------------|
+| **v2.4** | Knowledge lifecycle engine (dedup, consolidate, archive, health) |
 | **v2.3** | Skills library, community skills, session insights |
 | **v2.2** | Gum CLI support, safety features, lite model default |
 | **v2.1** | Unified installer, OpenAI provider support |
@@ -189,6 +209,7 @@ Day 3: Claude suggests improvements based on what worked.
 | **Lightning Indexing** | 10,000 files indexed in 30 seconds |
 | **Skills Library** | 36+ community skills, one-click install |
 | **Cross-Project Learning** | Patterns from Project A help in Project B |
+| **Knowledge Lifecycle** | Dedup, consolidate, archive, and health reports |
 | **One-Command Setup** | `/claude-os-init` and you're ready |
 
 ---
@@ -497,6 +518,7 @@ All these work in any initialized project:
 - **`/claude-os-session [action]`** - Manage development sessions
 - **`/claude-os-triggers`** - Manage trigger phrases
 - **`/claude-os-skills [action]`** - Manage skills (list, install, create)
+- **`/claude-os-lifecycle [action]`** - KB health, dedup, consolidate, archive
 
 ### Available Skills
 
@@ -875,7 +897,8 @@ claude-os/
 │   ├── commands/          # Slash commands (symlinked to ~/.claude/)
 │   │   ├── claude-os-init.md
 │   │   ├── claude-os-search.md
-│   │   ├── claude-os-skills.md    # NEW: Skills management
+│   │   ├── claude-os-skills.md
+│   │   ├── claude-os-lifecycle.md  # KB lifecycle management
 │   │   └── ...
 │   ├── skills/            # Global skills (symlinked to ~/.claude/)
 │   │   ├── initialize-project/
@@ -956,6 +979,95 @@ When you run `/claude-os-init`, you get 4 knowledge bases:
    - Your documentation
    - Auto-ingested during init
    - Add more via UI or CLI
+
+---
+
+## 🔬 Knowledge Lifecycle Management
+
+As your knowledge bases grow, they can accumulate duplicates, outdated content, and fragmented information. The **Knowledge Lifecycle Engine** keeps your KBs healthy and focused.
+
+### Commands
+
+```bash
+/claude-os-lifecycle health [kb_name]         # Health report with recommendations
+/claude-os-lifecycle dedup [kb_name]          # Scan and merge duplicate documents
+/claude-os-lifecycle consolidate [kb_name]    # LLM-powered document merging
+/claude-os-lifecycle archive [kb_name]        # Find stale docs, archive/restore
+/claude-os-lifecycle logs [kb_name]           # View operation history
+```
+
+### Deduplication
+
+Scans all document embeddings to find near-duplicates using cosine similarity:
+
+```bash
+# Scan for duplicates (default threshold: 0.85)
+/claude-os-lifecycle dedup my-project-project_memories
+
+# Results show clusters of similar docs with options:
+# [m] Merge - keep best, delete rest
+# [c] Consolidate - LLM-merge into one comprehensive doc
+# [s] Skip
+```
+
+### Consolidation
+
+Uses LLM to intelligently merge multiple related documents into a single comprehensive document:
+
+```bash
+/claude-os-lifecycle consolidate my-project-project_memories
+# Previews source docs, then generates a merged version
+# Preserves all unique info, eliminates redundancy
+# Stores provenance metadata (consolidated_from)
+```
+
+### Archival
+
+Soft-archive stale documents without permanent deletion:
+
+```bash
+# Find documents older than 90 days
+/claude-os-lifecycle archive my-project-project_memories
+
+# Archived docs are excluded from search but can be restored
+# Full restore available at any time
+```
+
+### Health Reports
+
+Get a comprehensive overview of your KB's health:
+
+- **Embedding coverage** - How many docs have vectors
+- **Age distribution** - Document freshness breakdown
+- **Top similar pairs** - Preview of potential duplicates
+- **Recommendations** - Actionable suggestions (dedup, re-index, archive)
+- **Growth timeline** - Track KB growth over time
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `mcp__code-forge__kb_lifecycle_health` | Health report with recommendations |
+| `mcp__code-forge__kb_lifecycle_dedup` | Scan/merge duplicates |
+| `mcp__code-forge__kb_lifecycle_consolidate` | LLM-powered document merging |
+| `mcp__code-forge__kb_lifecycle_archive` | Archive, restore, list, find stale |
+
+### API Endpoints
+
+All under `/api/kb/{kb_name}/lifecycle/`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/dedup-scan` | Scan for duplicates (background for >500 docs) |
+| `POST` | `/dedup-merge` | Merge duplicate documents |
+| `POST` | `/consolidate` | LLM-powered consolidation (background) |
+| `GET` | `/health` | Comprehensive health report |
+| `GET` | `/growth` | Document growth timeline |
+| `POST` | `/archive` | Archive documents |
+| `POST` | `/restore` | Restore archived documents |
+| `GET` | `/archived` | List archived documents |
+| `GET` | `/stale` | Find stale documents |
+| `GET` | `/logs` | Operation audit log |
 
 ---
 
@@ -1202,9 +1314,10 @@ claude-os/
 │   ├── core/              # Core modules
 │   │   ├── sqlite_manager.py
 │   │   ├── rag_engine.py
-│   │   ├── skill_manager.py    # NEW: Skills management
-│   │   ├── session_parser.py   # NEW: Session parsing
-│   │   ├── insight_extractor.py # NEW: Insight extraction
+│   │   ├── skill_manager.py    # Skills management
+│   │   ├── session_parser.py   # Session parsing
+│   │   ├── insight_extractor.py # Insight extraction
+│   │   ├── knowledge_lifecycle.py # KB lifecycle engine (dedup, archive, etc.)
 │   │   └── ...
 │   └── db/                # Database schemas
 ├── frontend/              # React UI (Vite)

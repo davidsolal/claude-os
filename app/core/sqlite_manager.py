@@ -765,6 +765,213 @@ class SQLiteManager:
         finally:
             conn.close()
 
+    # Knowledge Lifecycle Operations
+
+    def get_all_embeddings(self, kb_name: str, exclude_archived: bool = True) -> List[Dict[str, Any]]:
+        """Get all documents with embeddings for pairwise similarity analysis."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM knowledge_bases WHERE name = ?", (kb_name,))
+            result = cursor.fetchone()
+            if not result:
+                raise ValueError(f"Knowledge base '{kb_name}' not found")
+
+            kb_id = result['id']
+            cursor.execute(
+                "SELECT doc_id, content, embedding, metadata FROM documents WHERE kb_id = ?",
+                (kb_id,)
+            )
+
+            results = []
+            for row in cursor.fetchall():
+                metadata = json.loads(row['metadata']) if row['metadata'] else {}
+
+                if exclude_archived and metadata.get("archived"):
+                    continue
+
+                embedding = None
+                if row['embedding'] is not None:
+                    embedding = np.frombuffer(row['embedding'], dtype=np.float32)
+
+                results.append({
+                    "doc_id": row['doc_id'],
+                    "content": row['content'],
+                    "embedding": embedding,
+                    "metadata": metadata
+                })
+
+            return results
+        finally:
+            conn.close()
+
+    def update_document_metadata(self, kb_name: str, doc_id: str, metadata_updates: Dict[str, Any]) -> bool:
+        """Merge metadata updates into an existing document's metadata."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM knowledge_bases WHERE name = ?", (kb_name,))
+            result = cursor.fetchone()
+            if not result:
+                raise ValueError(f"Knowledge base '{kb_name}' not found")
+
+            kb_id = result['id']
+
+            # Get current metadata
+            cursor.execute(
+                "SELECT metadata FROM documents WHERE kb_id = ? AND doc_id = ?",
+                (kb_id, doc_id)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            current_metadata = json.loads(row['metadata']) if row['metadata'] else {}
+            current_metadata.update(metadata_updates)
+
+            cursor.execute(
+                "UPDATE documents SET metadata = ? WHERE kb_id = ? AND doc_id = ?",
+                (json.dumps(current_metadata), kb_id, doc_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def delete_documents_by_ids(self, kb_name: str, doc_ids: List[str]) -> int:
+        """Bulk delete documents by doc_id list. Returns count deleted."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM knowledge_bases WHERE name = ?", (kb_name,))
+            result = cursor.fetchone()
+            if not result:
+                raise ValueError(f"Knowledge base '{kb_name}' not found")
+
+            kb_id = result['id']
+            placeholders = ",".join(["?"] * len(doc_ids))
+            cursor.execute(
+                f"DELETE FROM documents WHERE kb_id = ? AND doc_id IN ({placeholders})",
+                [kb_id] + list(doc_ids)
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+    def insert_lifecycle_log(
+        self,
+        kb_name: str,
+        operation_type: str,
+        status: str = "pending",
+        input_doc_ids: List[str] = None,
+        output_doc_ids: List[str] = None,
+        details: Dict[str, Any] = None
+    ) -> int:
+        """Insert a lifecycle audit log entry. Returns log ID."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO lifecycle_log (kb_name, operation_type, status, input_doc_ids, output_doc_ids, details)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    kb_name,
+                    operation_type,
+                    status,
+                    json.dumps(input_doc_ids or []),
+                    json.dumps(output_doc_ids or []),
+                    json.dumps(details or {})
+                )
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def update_lifecycle_log(
+        self,
+        log_id: int,
+        status: str,
+        output_doc_ids: List[str] = None,
+        details: Dict[str, Any] = None
+    ) -> bool:
+        """Update lifecycle log status and completion."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+
+            updates = ["status = ?"]
+            params = [status]
+
+            if output_doc_ids is not None:
+                updates.append("output_doc_ids = ?")
+                params.append(json.dumps(output_doc_ids))
+
+            if details is not None:
+                updates.append("details = ?")
+                params.append(json.dumps(details))
+
+            if status in ("completed", "failed"):
+                updates.append("completed_at = CURRENT_TIMESTAMP")
+
+            params.append(log_id)
+            cursor.execute(
+                f"UPDATE lifecycle_log SET {', '.join(updates)} WHERE id = ?",
+                params
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def get_lifecycle_logs(
+        self,
+        kb_name: str,
+        operation_type: str = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Query lifecycle logs with optional filters."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            conditions = ["kb_name = ?"]
+            params: list = [kb_name]
+
+            if operation_type:
+                conditions.append("operation_type = ?")
+                params.append(operation_type)
+
+            query = f"""
+                SELECT id, kb_name, operation_type, status, input_doc_ids, output_doc_ids,
+                       details, created_at, completed_at
+                FROM lifecycle_log
+                WHERE {' AND '.join(conditions)}
+                ORDER BY created_at DESC
+                LIMIT ?
+            """
+            params.append(limit)
+            cursor.execute(query, params)
+
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "id": row['id'],
+                    "kb_name": row['kb_name'],
+                    "operation_type": row['operation_type'],
+                    "status": row['status'],
+                    "input_doc_ids": json.loads(row['input_doc_ids']) if row['input_doc_ids'] else [],
+                    "output_doc_ids": json.loads(row['output_doc_ids']) if row['output_doc_ids'] else [],
+                    "details": json.loads(row['details']) if row['details'] else {},
+                    "created_at": row['created_at'],
+                    "completed_at": row['completed_at']
+                })
+            return results
+        finally:
+            conn.close()
+
     def close(self):
         """Close database connections (no-op for SQLite)."""
         pass

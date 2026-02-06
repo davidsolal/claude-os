@@ -671,6 +671,56 @@ async def api_upload_document(kb_name: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ContentUploadRequest(BaseModel):
+    content: str
+    filename: str
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/kb/{kb_name}/documents/content")
+async def api_upload_content(kb_name: str, request: ContentUploadRequest):
+    """REST API: Upload raw text content directly to a knowledge base (no file needed)."""
+    import tempfile
+    import os as _os
+    from app.core.ingestion import ingest_file
+
+    # Validate KB exists
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    if not request.content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    # Determine file extension from filename
+    suffix = Path(request.filename).suffix or ".md"
+
+    # Write content to temp file and ingest using existing pipeline
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="w", encoding="utf-8") as tmp_file:
+            tmp_file.write(request.content)
+            tmp_path = tmp_file.name
+
+        result = ingest_file(tmp_path, kb_name, request.filename)
+
+        _os.unlink(tmp_path)
+
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result.get("error", "Upload failed"))
+
+        return {
+            "success": True,
+            "filename": result["filename"],
+            "chunks": result["chunks"],
+            "file_type": result["file_type"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Content upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/kb/{kb_name}/import")
 async def api_import_directory(kb_name: str, directory_path: str):
     """REST API: Import all files from a directory into a knowledge base."""
@@ -3298,6 +3348,235 @@ async def health_check():
     status_code = 200 if health_status["status"] in ["healthy", "degraded"] else 503
 
     return JSONResponse(content=health_status, status_code=status_code)
+
+
+# ============================================================================
+# KNOWLEDGE LIFECYCLE ENDPOINTS
+# ============================================================================
+
+class DedupScanRequest(BaseModel):
+    threshold: float = 0.85
+    max_pairs: int = 100
+
+class DedupMergeRequest(BaseModel):
+    keep_doc_id: str
+    remove_doc_ids: List[str]
+    dry_run: bool = False
+
+class ConsolidateRequest(BaseModel):
+    doc_ids: List[str]
+    new_filename: str
+    dry_run: bool = False
+
+class ArchiveRequest(BaseModel):
+    doc_ids: List[str]
+    reason: str = "manual"
+
+class RestoreRequest(BaseModel):
+    doc_ids: List[str]
+
+
+def _get_lifecycle_engine():
+    """Lazy import to avoid circular imports."""
+    from app.core.knowledge_lifecycle import KnowledgeLifecycleEngine
+    return KnowledgeLifecycleEngine()
+
+
+def _run_dedup_scan_background(job_id: str, kb_name: str, threshold: float, max_pairs: int):
+    """Background worker for dedup scan on large KBs."""
+    def update_job(status, progress=0, message="", error=None):
+        with INDEXING_JOBS_LOCK:
+            INDEXING_JOBS[job_id].update({
+                "status": status, "progress": progress,
+                "message": message, "error": error, "updated_at": time.time()
+            })
+            if status in ("completed", "failed"):
+                INDEXING_JOBS[job_id]["completed_at"] = time.time()
+
+    try:
+        update_job("running", 10, "Loading embeddings...")
+        engine = _get_lifecycle_engine()
+        update_job("running", 30, "Computing pairwise similarities...")
+        result = engine.scan_duplicates(kb_name, threshold, max_pairs)
+        update_job("completed", 100, f"Found {len(result['duplicate_pairs'])} duplicate pairs")
+        with INDEXING_JOBS_LOCK:
+            INDEXING_JOBS[job_id]["result"] = result
+    except Exception as e:
+        logger.error(f"[Job {job_id}] Dedup scan failed: {e}")
+        update_job("failed", 0, "", str(e))
+
+
+def _run_consolidation_background(job_id: str, kb_name: str, doc_ids: list, new_filename: str):
+    """Background worker for LLM-powered consolidation."""
+    def update_job(status, progress=0, message="", error=None):
+        with INDEXING_JOBS_LOCK:
+            INDEXING_JOBS[job_id].update({
+                "status": status, "progress": progress,
+                "message": message, "error": error, "updated_at": time.time()
+            })
+            if status in ("completed", "failed"):
+                INDEXING_JOBS[job_id]["completed_at"] = time.time()
+
+    try:
+        update_job("running", 10, "Fetching source documents...")
+        engine = _get_lifecycle_engine()
+        update_job("running", 30, "Generating consolidated document via LLM...")
+        result = engine.consolidate_related(kb_name, doc_ids, new_filename, dry_run=False)
+        if "error" in result:
+            update_job("failed", 0, "", result["error"])
+        else:
+            update_job("completed", 100, f"Consolidated {result.get('sources_consolidated', 0)} documents")
+            with INDEXING_JOBS_LOCK:
+                INDEXING_JOBS[job_id]["result"] = result
+    except Exception as e:
+        logger.error(f"[Job {job_id}] Consolidation failed: {e}")
+        update_job("failed", 0, "", str(e))
+
+
+@app.post("/api/kb/{kb_name}/lifecycle/dedup-scan")
+async def api_lifecycle_dedup_scan(kb_name: str, request: DedupScanRequest, background_tasks: BackgroundTasks):
+    """Scan KB for duplicate/near-duplicate documents."""
+    import uuid
+
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    doc_count = db_manager.get_collection_count(kb_name)
+
+    # Background mode for large KBs
+    if doc_count > 500:
+        _cleanup_old_jobs()
+        job_id = f"dedup-{kb_name}-{uuid.uuid4().hex[:8]}"
+        with INDEXING_JOBS_LOCK:
+            INDEXING_JOBS[job_id] = {
+                "job_id": job_id, "type": "dedup_scan", "kb_name": kb_name,
+                "status": "queued", "progress": 0, "message": "Job queued",
+                "started_at": time.time(), "completed_at": None, "error": None
+            }
+        background_tasks.add_task(_run_dedup_scan_background, job_id, kb_name, request.threshold, request.max_pairs)
+        return {"success": True, "job_id": job_id, "mode": "background",
+                "message": f"Dedup scan started in background ({doc_count} docs). Check GET /api/jobs/{job_id}"}
+
+    # Sync mode for smaller KBs
+    engine = _get_lifecycle_engine()
+    result = engine.scan_duplicates(kb_name, request.threshold, request.max_pairs)
+    return result
+
+
+@app.post("/api/kb/{kb_name}/lifecycle/dedup-merge")
+async def api_lifecycle_dedup_merge(kb_name: str, request: DedupMergeRequest):
+    """Merge duplicate documents by keeping one and removing the rest."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    result = engine.merge_duplicates(kb_name, request.keep_doc_id, request.remove_doc_ids, request.dry_run)
+    return result
+
+
+@app.post("/api/kb/{kb_name}/lifecycle/consolidate")
+async def api_lifecycle_consolidate(kb_name: str, request: ConsolidateRequest, background_tasks: BackgroundTasks):
+    """Consolidate related documents into a single merged document using LLM."""
+    import uuid
+
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    if request.dry_run:
+        engine = _get_lifecycle_engine()
+        return engine.consolidate_related(kb_name, request.doc_ids, request.new_filename, dry_run=True)
+
+    # Always run consolidation in background (LLM call)
+    _cleanup_old_jobs()
+    job_id = f"consolidate-{kb_name}-{uuid.uuid4().hex[:8]}"
+    with INDEXING_JOBS_LOCK:
+        INDEXING_JOBS[job_id] = {
+            "job_id": job_id, "type": "consolidation", "kb_name": kb_name,
+            "status": "queued", "progress": 0, "message": "Job queued",
+            "started_at": time.time(), "completed_at": None, "error": None
+        }
+    background_tasks.add_task(_run_consolidation_background, job_id, kb_name, request.doc_ids, request.new_filename)
+    return {"success": True, "job_id": job_id, "mode": "background",
+            "message": f"Consolidation started. Check GET /api/jobs/{job_id}"}
+
+
+@app.get("/api/kb/{kb_name}/lifecycle/health")
+async def api_lifecycle_health(kb_name: str):
+    """Get comprehensive health report for a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.get_health_report(kb_name)
+
+
+@app.get("/api/kb/{kb_name}/lifecycle/growth")
+async def api_lifecycle_growth(kb_name: str, granularity: str = "month"):
+    """Get document growth timeline for a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.get_growth_timeline(kb_name, granularity)
+
+
+@app.post("/api/kb/{kb_name}/lifecycle/archive")
+async def api_lifecycle_archive(kb_name: str, request: ArchiveRequest):
+    """Archive documents in a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.archive_documents(kb_name, request.doc_ids, request.reason)
+
+
+@app.post("/api/kb/{kb_name}/lifecycle/restore")
+async def api_lifecycle_restore(kb_name: str, request: RestoreRequest):
+    """Restore archived documents in a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.restore_documents(kb_name, request.doc_ids)
+
+
+@app.get("/api/kb/{kb_name}/lifecycle/archived")
+async def api_lifecycle_archived(kb_name: str):
+    """List archived documents in a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.list_archived(kb_name)
+
+
+@app.get("/api/kb/{kb_name}/lifecycle/stale")
+async def api_lifecycle_stale(kb_name: str, stale_days: int = 90):
+    """Find stale documents older than the specified threshold."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    engine = _get_lifecycle_engine()
+    return engine.find_stale_documents(kb_name, stale_days)
+
+
+@app.get("/api/kb/{kb_name}/lifecycle/logs")
+async def api_lifecycle_logs(kb_name: str, operation_type: Optional[str] = None, limit: int = 50):
+    """Get lifecycle operation logs for a knowledge base."""
+    db_manager = get_sqlite_manager()
+    if not db_manager.collection_exists(kb_name):
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+    return {"logs": db_manager.get_lifecycle_logs(kb_name, operation_type, limit)}
 
 
 # ============================================================================

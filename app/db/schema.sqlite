@@ -101,3 +101,19 @@ CREATE TABLE IF NOT EXISTS project_kb_folders (
 
 CREATE INDEX IF NOT EXISTS idx_pkf_project_id ON project_kb_folders(project_id);
 CREATE INDEX IF NOT EXISTS idx_pkf_mcp_type ON project_kb_folders(mcp_type);
+
+-- Knowledge Lifecycle Tracking (for dedup, consolidation, archival audit log)
+CREATE TABLE IF NOT EXISTS lifecycle_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kb_name TEXT NOT NULL,
+    operation_type TEXT NOT NULL,       -- dedup_scan, dedup_merge, consolidate, archive, restore
+    status TEXT NOT NULL DEFAULT 'pending',
+    input_doc_ids TEXT DEFAULT '[]',    -- JSON array
+    output_doc_ids TEXT DEFAULT '[]',   -- JSON array
+    details TEXT DEFAULT '{}',          -- JSON blob
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lifecycle_kb ON lifecycle_log(kb_name);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_op ON lifecycle_log(operation_type);
