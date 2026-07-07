@@ -939,9 +939,11 @@ setup_claude_integration() {
     # Create directories
     mkdir -p "${USER_CLAUDE_DIR}/commands"
     mkdir -p "${USER_CLAUDE_DIR}/skills"
+    mkdir -p "${USER_CLAUDE_DIR}/agents"
     mkdir -p "${USER_CLAUDE_DIR}/mcp-servers"
     mkdir -p "${CLAUDE_OS_DIR}/data"
     mkdir -p "${CLAUDE_OS_DIR}/logs"
+    mkdir -p "${HOME}/.claude/borg/runs"
 
     success "Created directories"
 
@@ -970,6 +972,22 @@ setup_claude_integration() {
         fi
     done
     success "Linked ${skill_count} skills"
+
+    # Symlink agents (e.g. the Borg Queen orchestrator)
+    local agent_count=0
+    for agent_file in "${TEMPLATES_DIR}"/agents/*.md; do
+        if [[ -f "$agent_file" ]]; then
+            local agent_name=$(basename "$agent_file")
+            local dest="${USER_CLAUDE_DIR}/agents/${agent_name}"
+            rm -f "$dest" 2>/dev/null
+            ln -s "$agent_file" "$dest"
+            agent_count=$((agent_count + 1))
+        fi
+    done
+    success "Linked ${agent_count} agents"
+
+    # Make Borg scripts executable
+    chmod +x "${CLAUDE_OS_DIR}/scripts/borg-drone.sh" "${CLAUDE_OS_DIR}/scripts/borg-lib.sh" 2>/dev/null || true
 
     # NOTE: MCP server is configured per-project when running /claude-os-init
     # Claude Code stores MCP configs in ~/.claude.json per-project, not in settings.json
@@ -1184,9 +1202,10 @@ main() {
     # Claude Code integration
     if [[ "$DRY_RUN" == "true" ]]; then
         print_section "Claude Code Integration"
-        dry_run_msg "Would create directories: ~/.claude/commands, ~/.claude/skills"
+        dry_run_msg "Would create directories: ~/.claude/commands, ~/.claude/skills, ~/.claude/agents, ~/.claude/borg/runs"
         dry_run_msg "Would symlink commands from ${TEMPLATES_DIR}/commands/"
         dry_run_msg "Would symlink skills from ${TEMPLATES_DIR}/skills/"
+        dry_run_msg "Would symlink agents from ${TEMPLATES_DIR}/agents/ (incl. borg-queen)"
         dry_run_msg "Would configure MCP server in ~/.claude/settings.json"
     else
         setup_claude_integration

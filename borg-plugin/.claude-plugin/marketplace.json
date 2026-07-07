@@ -1,0 +1,21 @@
+{
+  "name": "borg",
+  "owner": {
+    "name": "David Solal"
+  },
+  "metadata": {
+    "description": "The Borg — a Queen orchestrator that decomposes a plan and assimilates parallel drones (internal Claude sub-agents + external ollama-backed Claude) unified by a shared memory backend.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "borg",
+      "description": "Engage the collective: /borg fans a plan out across parallel drones unified by one shared mind. Memory backend defaults to Claude OS but is pluggable via an HTTP contract.",
+      "version": "0.1.0",
+      "author": {
+        "name": "David Solal"
+      },
+      "source": "./plugins/borg"
+    }
+  ]
+}

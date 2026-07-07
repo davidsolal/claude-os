@@ -1,0 +1,16 @@
+{
+  "name": "borg",
+  "version": "0.1.0",
+  "description": "Engage the collective: /borg decomposes a plan and assimilates parallel drones (internal Claude sub-agents + external ollama-backed Claude) into one hive mind unified by a shared memory backend. Defaults to Claude OS; pluggable via an HTTP memory contract.",
+  "author": {
+    "name": "David Solal"
+  },
+  "keywords": [
+    "orchestration",
+    "swarm",
+    "agents",
+    "ollama",
+    "memory",
+    "claude-os"
+  ]
+}
