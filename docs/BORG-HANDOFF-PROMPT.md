@@ -9,11 +9,17 @@ continue work without breaking either lineage.
 ## The repos and how to get them
 
 1. **claude-os** (shell/Claude-Code lineage) — local at
-   `~/Tree/Documents/Dev/claude-os`. Upstream is
-   `https://github.com/brobertsaz/claude-os` (NOT the user's repo — never push
-   there; the user has no fork). All borg work lives on the LOCAL branch:
+   `~/Tree/Documents/Dev/claude-os`. Two remotes:
+   - `origin` = `https://github.com/brobertsaz/claude-os` — the upstream
+     author's repo, `push: false`. Pull upstream updates from here, NEVER push.
+   - `fork` = `git@github.com:davidsolal/claude-os.git` — the user's fork
+     (created 2026-07-07). `main` and `borg-improvements` are pushed here;
+     all borg history is merged into `main` (tip `ad9bbc7`).
    ```bash
-   cd ~/Tree/Documents/Dev/claude-os && git checkout borg-improvements
+   # on the user's machine:
+   cd ~/Tree/Documents/Dev/claude-os && git checkout main && git pull fork main
+   # on any other machine:
+   gh repo clone davidsolal/claude-os
    ```
 2. **hermes-borg-skill** (Hermes-native lineage, skill + references) and
 3. **hermes-borg-plugin** (Hermes-native lineage, python toolset) — both under
@@ -27,9 +33,10 @@ continue work without breaking either lineage.
    git -C hermes-borg-skill pull; git -C hermes-borg-plugin pull   # main = truth
    ```
 
-## Changelog — claude-os, branch `borg-improvements` (2026-07-07)
+## Changelog — claude-os `main` (== `borg-improvements`, 2026-07-07)
 
-Two commits on top of upstream `main` (ee7b62b):
+`main` was fast-forwarded over the borg branch and pushed to the fork.
+Commits on top of upstream `main` (ee7b62b):
 
 - **cdf5c3b — baseline.** First commit of the previously-untracked Borg:
   Queen agent (`templates/agents/borg-queen.md`), `/borg` command
@@ -59,6 +66,11 @@ Two commits on top of upstream `main` (ee7b62b):
     never the slug; drone prompts require writing reports EARLY and appending
     (tool-budget cut-off pitfall); "drone reports are self-reports" rule in the
     Queen/command docs; lineage section in `docs/BORG.md`.
+- **0c1fe6d — this handoff prompt** (`docs/BORG-HANDOFF-PROMPT.md`).
+- **ad9bbc7 — unrelated pending work committed alongside**: PHP tag extraction
+  (classes/interfaces/traits/enums/functions/methods) in
+  `app/core/tree_sitter_indexer.py`, and `.env.example` default
+  `OLLAMA_MODEL=gemma4:latest`.
 
 ## Changelog — hermes repos (state of `main`)
 
@@ -91,8 +103,13 @@ Two commits on top of upstream `main` (ee7b62b):
   against the documents list; unique report filenames; drones work in
   sandboxes and the Queen reviews before applying (drone reports are
   self-reports — re-read claimed edits, run tests); drones write reports early.
-- **Git**: commit as `devsolal@gmail.com`. claude-os borg work stays on
-  `borg-improvements` (no pushable remote); hermes repos push to their `main`.
+- **Git**: commit as `devsolal@gmail.com`. claude-os work goes to `main` and is
+  pushed with `git push fork main` (the `fork` remote = davidsolal/claude-os);
+  `origin` is upstream and rejects pushes. Hermes repos push to their `main`.
+- **Deliberately NOT committed** in the claude-os working tree:
+  `.claude/settings.local.json` (local permissions) and untracked runtime junk
+  (`data/`, `dump.rdb`, `sessions/`, `hts-cache/`, stale `borg-plugin.zip`).
+  Leave them alone or gitignore them; do not sweep them into commits.
 - **Open cross-pollination items**: port `borg_verify_doc` into
   hermes-borg-plugin's python (it currently trusts the assimilate response);
   consider porting Hermes checkpointing and model tiering to the shell borg;
