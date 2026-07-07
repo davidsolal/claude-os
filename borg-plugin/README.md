@@ -13,8 +13,10 @@ borg-plugin/
         ├── .claude-plugin/plugin.json
         ├── commands/borg.md       # the /borg slash command
         ├── agents/borg-queen.md   # the Borg Queen subagent
-        ├── scripts/borg-lib.sh    # curl primitives for the memory backend
-        ├── scripts/borg-drone.sh  # external ollama-drone launcher
+        ├── scripts/borg-lib.sh      # curl primitives for the memory backend
+        ├── scripts/borg-drone.sh    # external ollama-drone launcher
+        ├── scripts/borg-swarm.sh    # parallel fan-out across many drones
+        ├── scripts/borg-selftest.sh # cost-free end-to-end smoke test
         └── README.md              # plugin docs + pluggable-memory contract
 ```
 

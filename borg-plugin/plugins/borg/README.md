@@ -13,8 +13,10 @@ memory is what makes many models behave as a single collective.
 |-----------|------|------|
 | `/borg` command | `commands/borg.md` | Top-level entry. Runs the full hybrid swarm. |
 | `borg-queen` agent | `agents/borg-queen.md` | The orchestrator persona / subagent. |
-| Drone launcher | `scripts/borg-drone.sh` | Spawns one sandboxed external ollama drone; auto-recalls, executes, assimilates. |
+| Drone launcher | `scripts/borg-drone.sh` | Spawns one sandboxed external ollama drone; auto-recalls, executes, assimilates. Kills hung drones after `--timeout` (default 1800s). |
+| Swarm launcher | `scripts/borg-swarm.sh` | Fans a task list out across many drones with bounded parallelism; prints a summary table and assimilates it. |
 | Collective lib | `scripts/borg-lib.sh` | `curl` primitives: `borg_recall`, `borg_recall_kb`, `borg_assimilate`, `borg_ensure_kb`, `borg_online`. |
+| Selftest | `scripts/borg-selftest.sh` | End-to-end smoke test against a mock API + fake `ollama` — no server, no models, no cost. |
 
 Scripts are resolved at runtime via `${CLAUDE_PLUGIN_ROOT}`, so the plugin works
 from wherever Claude Code installs it.
@@ -95,6 +97,18 @@ Override per drone with `--model`.
 - Drones produce artifacts in their sandbox; the Queen (or you) reviews reports and
   applies vetted changes to live code. Recon tasks use `--readonly`.
 
+### Launch a whole swarm from a task list
+
+```bash
+cat > tasks.txt <<'EOF'
+drone-auth :: Refactor the auth module to use JWT
+drone-tests :: Write pytest tests for app/core/rag_engine.py
+EOF
+bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/borg-swarm.sh" --tasks tasks.txt --parallel 3 \
+  --project-kb myapp-project_memories   # omit if not in a project
+# per-run flags: --model, --timeout <secs>, --readonly, --run-id
+```
+
 ### Launch a single external drone by hand
 
 ```bash
@@ -104,5 +118,13 @@ bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/borg-drone.sh" \
   --task "Write pytest tests for app/core/rag_engine.py" \
   --model glm-5:cloud \
   --project-kb myapp-project_memories   # omit if not in a project
-# --readonly  → recon/planning only, no file writes
+# --readonly       → recon/planning only, no file writes
+# --timeout <secs> → kill a hung drone (default 1800; rc=124 on expiry)
+```
+
+Reports upload under unique filenames (`<run-id>-<drone>.md`) so sibling drones
+never collide in the KB. Verify the whole pipeline without any server or model:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/borg-selftest.sh"
 ```

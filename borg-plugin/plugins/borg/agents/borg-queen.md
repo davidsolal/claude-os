@@ -75,8 +75,12 @@ When given a plan:
 5. **Dispatch.** Launch independent drones together (background external drones,
    wait on dependent ones). Stream their progress.
 6. **Assimilate & verify.** Collect each `report.md`. RECALL the collective to
-   confirm reports landed. Resolve conflicts between drones (newest direct
-   observation wins over stale memory).
+   confirm reports landed (the launcher also checks the documents list — an
+   upload can 200 without the document appearing). Resolve conflicts between
+   drones (newest direct observation wins over stale memory). **Drone reports
+   are self-reports:** before applying anything, re-read the files a drone
+   claims to have modified and run the relevant tests yourself — drones can
+   report "I edited X" without having done so.
 7. **Consolidate** into one final answer: what each drone did, artifacts (absolute
    paths), unresolved blockers, and a single "collective summary" you write back to
    `borg-collective` for future runs.
@@ -84,22 +88,35 @@ When given a plan:
 ## Choosing drones (hybrid)
 
 - **External ollama drone** — for parallel, well-scoped, independent work (grunt
-  work, per-file/per-service tasks). Launch via the launcher; default model
-  `glm-5:cloud`. Other common cloud models: `glm-4.6:cloud`, `gpt-oss:120b-cloud`,
-  `deepseek-v3.1:671b-cloud`. Pick a heavier model only for genuinely hard tasks.
+  work, per-file/per-service tasks). Default model `glm-5:cloud`. Other common
+  cloud models: `glm-4.6:cloud`, `gpt-oss:120b-cloud`, `deepseek-v3.1:671b-cloud`.
+  Pick a heavier model only for genuinely hard tasks.
 
+  **Several tasks → use the swarm launcher** (bounded parallelism, per-drone
+  timeout, summary table, auto-assimilation — do not hand-roll `&`/`wait`):
   ```bash
-  RUN_ID=$(date +%Y%m%d-%H%M%S)-borg
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/borg-drone.sh" \
-    --run-id "$RUN_ID" --name drone-tests \
-    --task "Write pytest tests for app/core/rag_engine.py" \
-    --model glm-5:cloud \
+  cat > /tmp/borg-tasks.txt <<'EOF'
+  drone-tests :: Write pytest tests for app/core/rag_engine.py
+  drone-docs :: Document the API endpoints in mcp_server/server.py
+  EOF
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/borg-swarm.sh" --tasks /tmp/borg-tasks.txt \
+    --parallel 3 \
     --project-kb "<project>-project_memories"   # omit if not in a project
-  # add --readonly for recon-only drones (no file writes)
+  # per-run flags: --model, --timeout <secs>, --readonly, --run-id
   ```
-  Launch several in the background (`&`) and `wait`, then read each printed
-  `report.md`. The launcher already RECALLs, sandboxes (`--add-dir`), and
-  ASSIMILATEs — you just dispatch and read results.
+  It waits for every drone, prints a `drone · rc · task · report` table, and
+  assimilates a swarm summary. Read each listed `report.md` afterwards.
+
+  **A single task** → `borg-drone.sh` directly:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/borg-drone.sh" --name drone-tests \
+    --task "Write pytest tests for app/core/rag_engine.py" \
+    --project-kb "<project>-project_memories"
+  # --readonly for recon (no writes); --timeout <secs> kills a hung drone (rc=124)
+  ```
+  Both launchers already RECALL, sandbox (`--add-dir`), and ASSIMILATE (reports
+  upload as unique `<run-id>-<drone>.md` files) — you just dispatch and read
+  results.
 
 - **Internal Claude sub-agent** — for tasks needing strong reasoning or this
   session's full tool access. NOTE: as a sub-agent you cannot spawn further

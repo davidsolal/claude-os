@@ -14,8 +14,10 @@ many models behave as a single collective.
 |-------|------|------|
 | **Queen agent** | `templates/agents/borg-queen.md` → `~/.claude/agents/` | The orchestrator persona. Decomposes plans, dispatches drones, consolidates. |
 | **`/borg` command** | `templates/commands/borg.md` → `~/.claude/commands/` | Top-level entry. Runs the full hybrid swarm (internal `Task` drones **and** external ollama drones). |
-| **Drone launcher** | `scripts/borg-drone.sh` | Spawns one sandboxed external ollama drone, headless; auto-recalls, executes, assimilates. |
+| **Drone launcher** | `scripts/borg-drone.sh` | Spawns one sandboxed external ollama drone, headless; auto-recalls, executes, assimilates. Kills hung drones after `--timeout` (default 1800s). |
+| **Swarm launcher** | `scripts/borg-swarm.sh` | Fans a task list out across many drones with bounded parallelism; prints a summary table and assimilates it. |
 | **Collective lib** | `scripts/borg-lib.sh` | `curl` primitives: `borg_recall`, `borg_recall_kb`, `borg_assimilate`, `borg_ensure_kb`. |
+| **Selftest** | `scripts/borg-selftest.sh` | End-to-end smoke test against a mock API + fake `ollama` — no server, no models, no cost. |
 | **Hive KB** | `borg-collective` (Claude OS KB) | Durable cross-run shared memory. |
 | **Sandboxes** | `~/.claude/borg/runs/<run-id>/<drone>/` | Per-drone working dirs. |
 
@@ -39,6 +41,23 @@ independent tasks → assign drones (internal Claude for reasoning, external oll
 for parallel grunt work) → dispatch → assimilate reports → consolidate → write a
 collective summary for next time.
 
+### Launch a whole swarm from a task list
+
+```bash
+cat > tasks.txt <<'EOF'
+drone-auth :: Refactor the auth module to use JWT
+drone-tests :: Write pytest tests for app/core/rag_engine.py
+Audit error handling in mcp_server/server.py      # unnamed → drone-3
+EOF
+bash scripts/borg-swarm.sh --tasks tasks.txt --parallel 3 \
+  --project-kb myapp-project_memories   # omit if not in a project
+# per-run flags: --model, --timeout <secs>, --readonly, --run-id
+```
+
+One drone per line (`name :: task`, or just the task). The swarm launcher waits
+for every drone, prints a `drone · rc · task · report` table, writes
+`swarm-summary.md` into the run dir, and assimilates it into the hive.
+
 ### Launch a single external drone by hand
 
 ```bash
@@ -48,7 +67,19 @@ bash scripts/borg-drone.sh \
   --task "Write pytest tests for app/core/rag_engine.py" \
   --model glm-5:cloud \
   --project-kb myapp-project_memories   # omit if not in a project
-# --readonly  → recon/planning only, no file writes
+# --readonly       → recon/planning only, no file writes
+# --timeout <secs> → kill a hung drone (default 1800; rc=124 on expiry)
+```
+
+Reports upload under a unique filename (`<run-id>-<drone>.md`) so sibling
+drones never collide in the KB. `--readonly` drones get a read-only tool
+allowlist (instead of `--dangerously-skip-permissions`) and return their report
+via stdout markers, which the launcher extracts into `report.md`.
+
+### Verify the pipeline without spending anything
+
+```bash
+bash scripts/borg-selftest.sh
 ```
 
 ## Models
@@ -65,6 +96,27 @@ Claude Code agent well. Override per drone with `--model`.
 - Drones produce artifacts in their sandbox; the Queen (or you) reviews reports and
   applies vetted changes to live code. Recon tasks use `--readonly`.
 
+## Lineage — the Hermes borg
+
+This shell/Claude-Code borg has a sibling lineage running natively on the
+Hermes Agent: [`hermes-borg-skill`](https://github.com/davidsolal/hermes-borg-skill)
+(orchestration skill + 180 battle-tested references) and
+[`hermes-borg-plugin`](https://github.com/davidsolal/hermes-borg-plugin)
+(python toolset: `borg_status` / `borg_recall` / `borg_assimilate` /
+`borg_ensure_kb`). Both lineages share the same Claude OS API contract and the
+same RECALL → EXECUTE → ASSIMILATE protocol.
+
+Rules reconciled from the Hermes lineage into this one:
+- **KB identifiers**: API paths take the KB `name` (underscored form from
+  `GET /api/kb`), never the slug.
+- **Never trust an assimilate 200** — an upload can succeed while the document
+  never appears (embedding lag, write race). `borg_verify_doc` checks the
+  documents list; the drone launcher does this automatically.
+- **Drone reports are self-reports** — the Queen re-reads files a drone claims
+  to have modified and runs the tests herself before applying patches.
+- **Drones write reports early and append** — a budget/timeout cut-off must not
+  lose everything (the launcher's prompt enforces this).
+
 ## Requirements
 
 - Claude OS server running (`./start.sh`, health at `http://localhost:8051/health`).
@@ -78,3 +130,5 @@ Claude Code agent well. Override per drone with `--model`.
 | `CLAUDE_OS_API` | `http://localhost:8051` | Collective API base URL. |
 | `BORG_COLLECTIVE_KB` | `borg-collective` | Hive KB name. |
 | `BORG_AUTH_TOKEN` | _(unset)_ | Bearer token, only if Claude OS auth is enabled. |
+| `BORG_DRONE_TIMEOUT` | `1800` | Per-drone wall-clock limit in seconds (`--timeout` overrides). |
+| `BORG_RUNS_DIR` | `~/.claude/borg/runs` | Where drone sandboxes and run artifacts live. |

@@ -987,7 +987,7 @@ setup_claude_integration() {
     success "Linked ${agent_count} agents"
 
     # Make Borg scripts executable
-    chmod +x "${CLAUDE_OS_DIR}/scripts/borg-drone.sh" "${CLAUDE_OS_DIR}/scripts/borg-lib.sh" 2>/dev/null || true
+    chmod +x "${CLAUDE_OS_DIR}"/scripts/borg-*.sh 2>/dev/null || true
 
     # NOTE: MCP server is configured per-project when running /claude-os-init
     # Claude Code stores MCP configs in ~/.claude.json per-project, not in settings.json

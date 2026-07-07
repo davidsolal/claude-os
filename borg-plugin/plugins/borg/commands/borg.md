@@ -53,24 +53,35 @@ memory backend is something else, drive the collective through the curl helpers 
      specialist) — for reasoning-heavy work or tasks needing this repo's full context.
      In the drone's prompt, embed the Borg protocol: *RECALL the collective first,
      do the task, then return a report; the Queen will assimilate it.*
-   - **External ollama drone** (`Bash` → `borg-drone.sh`) — for parallel, well-scoped
-     grunt work on free models. Default `glm-5:cloud`. The launcher auto-RECALLs,
-     sandboxes (`--add-dir`), and ASSIMILATEs.
+   - **External ollama drones** (`Bash` → `borg-swarm.sh` / `borg-drone.sh`) — for
+     parallel, well-scoped grunt work on free models. Default `glm-5:cloud`. The
+     launchers auto-RECALL, sandbox (`--add-dir`), enforce a per-drone timeout,
+     and ASSIMILATE reports under unique filenames.
+
+     Several independent tasks → one swarm (don't hand-roll `&`/`wait`):
      ```bash
-     RUN_ID=$(date +%Y%m%d-%H%M%S)-borg
-     bash "${CLAUDE_PLUGIN_ROOT}/scripts/borg-drone.sh" --run-id "$RUN_ID" --name drone-1 \
-       --task "<task>" --model glm-5:cloud \
+     cat > /tmp/borg-tasks.txt <<'EOF'
+     drone-1 :: <task one>
+     drone-2 :: <task two>
+     EOF
+     bash "${CLAUDE_PLUGIN_ROOT}/scripts/borg-swarm.sh" --tasks /tmp/borg-tasks.txt \
+       --parallel 3 \
        --project-kb "<project>-project_memories"   # omit if not in a project
-     # background several with & then `wait`; add --readonly for recon-only
+     # flags: --model, --timeout <secs>, --readonly (recon, no writes), --run-id
      ```
-5. **Dispatch.** Run independent drones concurrently (background external ones;
-   batch internal `Task` calls in one message). Honor dependencies.
+     A single task → `borg-drone.sh --name drone-1 --task "<task>"` with the same
+     flags.
+5. **Dispatch.** Run independent drones concurrently (one swarm for external
+   drones; batch internal `Task` calls in one message). Honor dependencies.
 6. **Assimilate.** Read each drone's `report.md` / `Task` result. For internal
    drones, write their report into `borg-collective` (and project KB) yourself —
    upload via `curl -s -X POST "${CLAUDE_OS_API:-http://localhost:8051}/api/kb/<kb>/upload" -F file=@report.md`
    (external drones already self-assimilated).
-7. **Verify & resolve.** RECALL to confirm reports landed. Reconcile conflicts —
-   a drone's direct observation beats stale memory.
+7. **Verify & resolve.** RECALL to confirm reports landed (an upload can 200
+   without the document appearing — check `GET /api/kb/<kb>/documents` if in
+   doubt). Reconcile conflicts — a drone's direct observation beats stale
+   memory. **Drone reports are self-reports:** re-read files a drone claims to
+   have modified and run the relevant tests before applying its work.
 8. **Apply.** Drones work in sandboxes; YOU review and apply vetted changes to the
    real project (or hand them to the user). Don't let drones write live code blindly.
 
