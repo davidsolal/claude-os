@@ -11,7 +11,27 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
+
+# Find a temp dir that allows execution (not noexec-mounted).
+# /tmp is noexec on some Docker containers and hardened Linux setups, which
+# breaks the fake ollama shim. Try TMPDIR, then /tmp, then fall back to
+# a dir under the script's parent (usually the repo root or home).
+_find_tmp() {
+  local candidate
+  for candidate in "${TMPDIR:-}" /tmp "${SCRIPT_DIR}/.selftest-tmp" "${HOME}/.cache/borg-selftest"; do
+    [[ -z "$candidate" ]] && continue
+    mkdir -p "$candidate" 2>/dev/null || continue
+    local test_file="${candidate}/borg-exec-test.$$"
+    printf '#!/bin/sh\necho ok\n' >"$test_file" 2>/dev/null && chmod +x "$test_file" 2>/dev/null
+    if "$test_file" >/dev/null 2>&1; then
+      rm -f "$test_file"
+      mktemp -d "${candidate}/borg-selftest.XXXXXX" 2>/dev/null && return 0
+    fi
+    rm -f "$test_file" 2>/dev/null
+  done
+  return 1
+}
+TMP="$(_find_tmp)" || { echo "borg-selftest: cannot find an executable temp dir" >&2; exit 1; }
 SERVER_PID=""
 trap '[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null; rm -rf "$TMP"' EXIT
 

@@ -16,8 +16,8 @@ many models behave as a single collective.
 | **`/borg` command** | `templates/commands/borg.md` → `~/.claude/commands/` | Top-level entry. Runs the full hybrid swarm (internal `Task` drones **and** external ollama drones). |
 | **Drone launcher** | `scripts/borg-drone.sh` | Spawns one sandboxed external ollama drone, headless; auto-recalls, executes, assimilates. Kills hung drones after `--timeout` (default 1800s). |
 | **Swarm launcher** | `scripts/borg-swarm.sh` | Fans a task list out across many drones with bounded parallelism; prints a summary table and assimilates it. |
-| **Collective lib** | `scripts/borg-lib.sh` | `curl` primitives: `borg_recall`, `borg_recall_kb`, `borg_assimilate`, `borg_ensure_kb`. |
-| **Selftest** | `scripts/borg-selftest.sh` | End-to-end smoke test against a mock API + fake `ollama` — no server, no models, no cost. |
+| **Collective lib** | `scripts/borg-lib.sh` | `curl` primitives: `borg_recall`, `borg_recall_kb`, `borg_assimilate`, `borg_verify_doc`, `borg_ensure_kb`. |
+| **Selftest** | `scripts/borg-selftest.sh` | End-to-end smoke test against a mock API + fake `ollama` — no server, no models, no cost. Auto-finds a non-noexec temp dir. |
 | **Hive KB** | `borg-collective` (Claude OS KB) | Durable cross-run shared memory. |
 | **Sandboxes** | `~/.claude/borg/runs/<run-id>/<drone>/` | Per-drone working dirs. |
 
@@ -103,8 +103,8 @@ Hermes Agent: [`hermes-borg-skill`](https://github.com/davidsolal/hermes-borg-sk
 (orchestration skill + 180 battle-tested references) and
 [`hermes-borg-plugin`](https://github.com/davidsolal/hermes-borg-plugin)
 (python toolset: `borg_status` / `borg_recall` / `borg_assimilate` /
-`borg_ensure_kb`). Both lineages share the same Claude OS API contract and the
-same RECALL → EXECUTE → ASSIMILATE protocol.
+`borg_verify_doc` / `borg_ensure_kb`). Both lineages share the same Claude OS
+API contract and the same RECALL → EXECUTE → ASSIMILATE protocol.
 
 Rules reconciled from the Hermes lineage into this one:
 - **KB identifiers**: API paths take the KB `name` (underscored form from

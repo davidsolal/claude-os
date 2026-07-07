@@ -110,8 +110,15 @@ Commits on top of upstream `main` (ee7b62b):
   `.claude/settings.local.json` (local permissions) and untracked runtime junk
   (`data/`, `dump.rdb`, `sessions/`, `hts-cache/`, stale `borg-plugin.zip`).
   Leave them alone or gitignore them; do not sweep them into commits.
-- **Open cross-pollination items**: port `borg_verify_doc` into
-  hermes-borg-plugin's python (it currently trusts the assimilate response);
-  consider porting Hermes checkpointing and model tiering to the shell borg;
-  optionally switch the shell lib to the `/documents/content` endpoint for
-  parity.
+- **Open cross-pollination items**:
+  - ✅ **DONE (2026-07-07):** `borg_verify_doc` ported into
+    hermes-borg-plugin's python — the plugin now auto-verifies every
+    assimilation against the documents list and exposes a standalone
+    `borg_verify_doc` tool. `borg_assimilate` gained a `verify` parameter
+    (default true).
+  - ✅ **DONE (2026-07-07):** borg-selftest.sh fixed for noexec environments
+    (Docker `/tmp` mounted noexec) — auto-finds a non-noexec temp dir before
+    creating the fake `ollama` shim. 17/17 passing.
+  - Consider porting Hermes checkpointing and model tiering to the shell borg;
+  - Optionally switch the shell lib to the `/documents/content` endpoint for
+    parity.

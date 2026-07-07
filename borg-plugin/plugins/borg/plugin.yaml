@@ -1,0 +1,13 @@
+name: borg
+version: 0.1.0
+description: Hermes-native Borg collective memory and drone orchestration tools.
+author: David Solal + Hermes Agent
+kind: standalone
+provides_tools:
+  - borg_status
+  - borg_ensure_kb
+  - borg_recall
+  - borg_recall_kb
+  - borg_assimilate
+  - borg_verify_doc
+provides_hooks: []
