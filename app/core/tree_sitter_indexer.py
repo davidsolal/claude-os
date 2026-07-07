@@ -311,6 +311,8 @@ class TreeSitterIndexer:
             tags.extend(self._extract_ruby_tags(tree, code, relative_path))
         elif language in ["javascript", "typescript"]:
             tags.extend(self._extract_js_tags(tree, code, relative_path))
+        elif language == "php":
+            tags.extend(self._extract_php_tags(tree, code, relative_path))
         # Add more languages as needed
 
         return tags
@@ -470,6 +472,55 @@ class TreeSitterIndexer:
         traverse(tree.root_node)
         return tags
 
+    def _extract_php_tags(self, tree, code: bytes, file_path: str) -> List[Tag]:
+        """Extract PHP classes, interfaces, traits, enums, functions, methods."""
+        tags = []
+
+        type_keywords = {
+            "class_declaration": "class",
+            "interface_declaration": "interface",
+            "trait_declaration": "trait",
+            "enum_declaration": "enum",
+        }
+
+        def traverse(node):
+            # Type declarations (class / interface / trait / enum)
+            if node.type in type_keywords:
+                name_node = node.child_by_field_name("name")
+                if name_node:
+                    name = code[name_node.start_byte:name_node.end_byte].decode("utf-8")
+                    keyword = type_keywords[node.type]
+                    tags.append(Tag(
+                        file=file_path,
+                        name=name,
+                        kind=keyword,
+                        line=node.start_point[0] + 1,
+                        signature=f"{keyword} {name}"
+                    ))
+
+            # Functions (top-level) and methods (inside a class/trait)
+            elif node.type in ["function_definition", "method_declaration"]:
+                name_node = node.child_by_field_name("name")
+                params_node = node.child_by_field_name("parameters")
+                if name_node:
+                    name = code[name_node.start_byte:name_node.end_byte].decode("utf-8")
+                    params = code[params_node.start_byte:params_node.end_byte].decode("utf-8") if params_node else "()"
+                    kind = "method" if node.type == "method_declaration" else "function"
+                    tags.append(Tag(
+                        file=file_path,
+                        name=name,
+                        kind=kind,
+                        line=node.start_point[0] + 1,
+                        signature=f"function {name}{params}"
+                    ))
+
+            # Recurse
+            for child in node.children:
+                traverse(child)
+
+        traverse(tree.root_node)
+        return tags
+
     def build_dependency_graph(self, tags: List[Tag]) -> nx.MultiDiGraph:
         """
         Build dependency graph from tags.
@@ -612,6 +663,38 @@ class TreeSitterIndexer:
 
         return best_map
 
+    @staticmethod
+    def _load_project_excludes(project_root: Path) -> List[str]:
+        """Load per-project structural-index excludes from .claude-os/config.json.
+
+        Reads docs_settings.exclude_patterns so the structural index honors the
+        same scoping as docs/semantic ingest. Returns [] if no config is present.
+        """
+        config_path = project_root / ".claude-os" / "config.json"
+        if not config_path.exists():
+            return []
+        try:
+            config = json.loads(config_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Could not read project excludes from {config_path}: {e}")
+            return []
+        patterns = config.get("docs_settings", {}).get("exclude_patterns", [])
+        return [p.strip("/") for p in patterns if p and p.strip("/")]
+
+    @staticmethod
+    def _path_excluded(rel_posix: str, pattern: str) -> bool:
+        """True if a project-relative posix path is covered by an exclude pattern.
+
+        Matches the pattern as a leading prefix, a trailing suffix, or an interior
+        path segment so multi-segment patterns like "public/assets" or
+        "bootstrap/cache" work, not just single directory names.
+        """
+        return (
+            rel_posix == pattern
+            or rel_posix.startswith(pattern + "/")
+            or ("/" + pattern + "/") in ("/" + rel_posix)
+        )
+
     def index_directory(
         self,
         project_path: str,
@@ -638,6 +721,11 @@ class TreeSitterIndexer:
         all_tags = []
         file_count = 0
 
+        # Per-project excludes (e.g. compiled webroot, vendor bundles) from config.json
+        project_excludes = self._load_project_excludes(project_root)
+        if project_excludes:
+            logger.info(f"Applying {len(project_excludes)} project excludes: {project_excludes}")
+
         # Find all files
         for file_path in project_root.rglob("*"):
             # Skip directories
@@ -651,6 +739,16 @@ class TreeSitterIndexer:
             # Skip non-code files
             if file_path.suffix.lower() not in self.LANGUAGE_MAP:
                 continue
+
+            # Skip minified bundles (never useful in a structural code map)
+            if ".min." in file_path.name:
+                continue
+
+            # Skip paths matching per-project exclude patterns
+            if project_excludes:
+                rel_posix = file_path.relative_to(project_root).as_posix()
+                if any(self._path_excluded(rel_posix, pat) for pat in project_excludes):
+                    continue
 
             # Parse file
             tags = self.parse_file(file_path, project_root)
